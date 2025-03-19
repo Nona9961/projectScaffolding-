@@ -1,0 +1,10 @@
+server:
+  port: 19890
+spring:
+  profiles:
+    active: dev
+  application:
+    name: app name
+
+logging:
+  config: classpath:log_config.xml
