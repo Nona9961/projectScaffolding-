@@ -22,10 +22,8 @@ import java.util.Optional;
  * @param <PO>    PO对象
  * @param <Other> 聚合根需要的其他对象，详见{@link RdbGeneralConvertor}
  * @see RdbGeneralConvertor
- * @deprecated 暂时没有实现好这个类，先别用
  */
 @RequiredArgsConstructor
-@Deprecated
 public abstract class DifferRepository<Root, PO extends BasePO, Other> implements BaseRepository<Long, Root> {
 
     protected final ListCrudRepository<PO, Long> repository;

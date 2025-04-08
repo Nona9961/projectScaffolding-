@@ -11,6 +11,10 @@
 
     <artifactId>server</artifactId>
     <packaging>jar</packaging>
+    <properties>
+        <javers.version>7.8.0</javers.version>
+        <kyro.version>5.6.2</kyro.version>
+    </properties>
 
     <dependencies>
         <dependency>
@@ -78,6 +82,12 @@
             <groupId>org.javers</groupId>
             <artifactId>javers-core</artifactId>
             <version>${javers.version}</version>
+        </dependency>
+        <!-- https://mvnrepository.com/artifact/com.esotericsoftware/kryo -->
+        <dependency>
+            <groupId>com.esotericsoftware</groupId>
+            <artifactId>kryo</artifactId>
+            <version>${kyro.version}</version>
         </dependency>
         <dependency>
             <groupId>com.nona</groupId>
