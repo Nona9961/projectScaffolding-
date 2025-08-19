@@ -1,0 +1,216 @@
+package com.nona.util;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.*;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.nona.exceptions.BusinessException;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+
+import java.io.IOException;
+import java.util.Objects;
+
+@Slf4j
+public class JacksonUtil {
+    public static final ObjectMapper DEFAULT_MAPPER = init();
+
+    private static ObjectMapper init() {
+        final ObjectMapper mapper = new ObjectMapper();
+        mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        mapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+        return mapper;
+    }
+
+    public static String toJsonString(Object object) {
+        return toJsonString(object, DEFAULT_MAPPER);
+    }
+
+    public static JsonNode toJsonNode(Object object) {
+        return toJsonNode(object, DEFAULT_MAPPER);
+    }
+
+    public static ObjectNode toObjectNode(Object object) {
+        return toObjectNode(object, DEFAULT_MAPPER);
+    }
+
+    public static ArrayNode toArrayNode(Object object) {
+        return toArrayNode(object, DEFAULT_MAPPER);
+    }
+
+    public static JsonNode jsonToNode(String json) {
+        return jsonToNode(json, DEFAULT_MAPPER);
+    }
+
+    public static ObjectNode jsonToObjNode(String json) {
+        return jsonToObjNode(json, DEFAULT_MAPPER);
+    }
+
+    public static ArrayNode jsonToArrayNode(String json) {
+        return jsonToArrayNode(json, DEFAULT_MAPPER);
+    }
+
+    public static <T> T fromJsonString(String json, Class<T> clazz) {
+        return fromJsonString(json, clazz, DEFAULT_MAPPER);
+    }
+
+    public static <T> T fromJsonNode(JsonNode jsonNode, Class<T> clazz) {
+        return fromJsonNode(jsonNode, clazz, DEFAULT_MAPPER);
+    }
+
+    public static <T> T fromJsonString(String json, TypeReference<T> typeReference) {
+        return fromJsonString(json, typeReference, DEFAULT_MAPPER);
+    }
+
+    public static <T> T fromJsonNode(JsonNode jsonNode, TypeReference<T> typeReference) {
+        return fromJsonNode(jsonNode, typeReference, DEFAULT_MAPPER);
+    }
+
+    public static boolean startTokenCheck(String json, boolean checkObject) {
+        if (StringUtils.isBlank(json)) {
+            return false;
+        }
+        final String trim = json.trim();
+        return checkObject ? trim.startsWith("{") : trim.startsWith("[");
+    }
+
+    public static boolean isObject(String json) {
+        try {
+            jsonToObjNode(json);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    //region base methods
+    public static ObjectNode toObjectNode(Object object, ObjectMapper mapper) {
+        JsonNode node = toJsonNode(object, mapper);
+        if (node instanceof ObjectNode objectNode) {
+            return objectNode;
+        }
+        throw new IllegalArgumentException("Cannot convert object to ObjectNode: " + object);
+    }
+
+    public static ArrayNode toArrayNode(Object object, ObjectMapper mapper) {
+        JsonNode node = toJsonNode(object, mapper);
+        if (node instanceof ArrayNode arrayNode) {
+            return arrayNode;
+        }
+        throw new IllegalArgumentException("Cannot convert object to ArrayNode: " + object);
+    }
+
+    public static ObjectNode jsonToObjNode(String json, ObjectMapper mapper) {
+        JsonNode node = jsonToNode(json, mapper);
+        if (node instanceof ObjectNode objectNode) {
+            return objectNode;
+        }
+        throw new IllegalArgumentException("JSON is not an object: " + json);
+    }
+
+    public static ArrayNode jsonToArrayNode(String json, ObjectMapper mapper) {
+        JsonNode node = jsonToNode(json, mapper);
+        if (node instanceof ArrayNode arrayNode) {
+            return arrayNode;
+        }
+        throw new IllegalArgumentException("JSON is not an array: " + json);
+    }
+
+    public static String toJsonString(Object object, ObjectMapper mapper) {
+        Objects.requireNonNull(mapper, "ObjectMapper must not be null");
+        if (object == null) {
+            return null;
+        }
+        try {
+            return mapper.writeValueAsString(object);
+        } catch (JsonProcessingException e) {
+            handleException(e, object);
+            return null;
+        }
+    }
+
+    public static JsonNode toJsonNode(Object object, ObjectMapper mapper) {
+        Objects.requireNonNull(mapper, "ObjectMapper must not be null");
+        if (object == null) {
+            return null;
+        }
+        try {
+            return mapper.valueToTree(object);
+        } catch (IllegalArgumentException e) {
+            handleException(e, object);
+            return null;
+        }
+    }
+
+    public static JsonNode jsonToNode(String json, ObjectMapper mapper) {
+        Objects.requireNonNull(mapper, "Object Mapper must not be null");
+        if (StringUtils.isBlank(json)) {
+            return null;
+        }
+        try {
+            return mapper.readTree(json);
+        } catch (IOException e) {
+            handleException(e, json);
+            return null;
+        }
+    }
+
+    public static <T> T fromJsonString(String json, Class<T> clazz, ObjectMapper mapper) {
+        Objects.requireNonNull(mapper, "Object Mapper must not be null");
+        Objects.requireNonNull(clazz, "Target class must not be null");
+        if (StringUtils.isBlank(json)) {
+            return null;
+        }
+        try {
+            return mapper.readValue(json, clazz);
+        } catch (IOException e) {
+            handleException(e, json);
+            return null;
+        }
+    }
+
+    public static <T> T fromJsonNode(JsonNode jsonNode, Class<T> clazz, ObjectMapper mapper) {
+        Objects.requireNonNull(clazz, "Target class must not be null");
+        Objects.requireNonNull(mapper, "Object Mapper must not be null");
+        if (jsonNode == null) {
+            return null;
+        }
+        try {
+            return mapper.treeToValue(jsonNode, clazz);
+        } catch (IOException e) {
+            handleException(e, jsonNode);
+            return null;
+        }
+    }
+
+    public static <T> T fromJsonString(String json, TypeReference<T> typeReference, ObjectMapper mapper) {
+        Objects.requireNonNull(typeReference, "TypeReference must not be null");
+        Objects.requireNonNull(mapper, "Object Mapper must not be null");
+        if (StringUtils.isBlank(json)) {
+            return null;
+        }
+        try {
+            return mapper.readValue(json, typeReference);
+        } catch (IOException e) {
+            handleException(e, json);
+            return null;
+        }
+    }
+
+    public static <T> T fromJsonNode(JsonNode jsonNode, TypeReference<T> typeReference, ObjectMapper mapper) {
+        Objects.requireNonNull(typeReference, "TypeReference must not be null");
+        Objects.requireNonNull(mapper, "Object Mapper must not be null");
+        if (jsonNode == null) {
+            return null;
+        }
+        final JavaType javaType = mapper.getTypeFactory().constructType(typeReference);
+        return mapper.convertValue(jsonNode, javaType);
+    }
+
+    //  endregion
+    private static void handleException(Exception e, Object input) {
+        log.error("Jackson operation failed for input: {}", input, e);
+        throw new BusinessException("internal error");
+    }
+}

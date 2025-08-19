@@ -7,12 +7,15 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 
 /**
+ * fixme 使用反射有点依赖于用户的使用习惯，应该提供明确注册机制
+ * <p>
  * 抽象RDB结构转换器的基类，提供了获取泛型和空判断的辅助实现
  * <p>通过泛型反射机制自动获取Root和PO的类型信息，实现类型安全的转换操作</p>
  * <p>注意：要求子类必须显式指定泛型参数</p>
  * 即 {@code
  * static class B extends A<Integer> {
  * }}
+ * 而
  * <p>
  * {@code
  * static class A<T> extends AbstractConvertor<T, Long, Void> {}
