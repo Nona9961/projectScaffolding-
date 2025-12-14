@@ -3,13 +3,10 @@ package com.nona.inf.persistence.repository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.nona.inf.context.ThreadContext;
 import com.nona.inf.persistence.converters.RdbGeneralConvertor;
-import com.nona.inf.persistence.diff.DifferAnalyzer;
 import com.nona.inf.persistence.po.BasePO;
-import com.nona.persisitence.BaseRepository;
+import com.nona.persistence.BaseRepository;
 import jakarta.annotation.Nullable;
 import lombok.RequiredArgsConstructor;
-import org.javers.core.Javers;
-import org.javers.core.diff.Diff;
 import org.springframework.data.repository.ListCrudRepository;
 
 import java.util.Objects;
@@ -27,7 +24,6 @@ import java.util.Optional;
 public abstract class DifferRepository<Root, PO extends BasePO, Other> implements BaseRepository<Long, Root> {
 
     protected final ListCrudRepository<PO, Long> repository;
-    private final Javers javers;
     protected final ThreadContext threadContext;
     private final TypeReference<Root> rootType = new TypeReference<>() {
     };
@@ -73,11 +69,7 @@ public abstract class DifferRepository<Root, PO extends BasePO, Other> implement
             threadContext.saveSnapshot(id, root);
             return true;
         }
-        final Diff diffs = javers.compare(snapshot, root);
-        if (!diffs.hasChanges()) {
-            return true;
-        }
-        final DifferAnalyzer differAnalyzer = DifferAnalyzer.analyzeFromDiff(diffs);
+        // todo diff
         threadContext.saveSnapshot(id, root);
         return false;
     }

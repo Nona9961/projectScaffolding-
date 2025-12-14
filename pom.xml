@@ -22,9 +22,10 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <commons.lang3.version>3.17.0</commons.lang3.version>
         <guava.version>33.4.0-jre</guava.version>
-        <spring-boot-dependencies.version>3.4.3</spring-boot-dependencies.version>
+        <spring-boot-dependencies.version>3.5.8</spring-boot-dependencies.version>
         <mybatis-starter.version>3.0.4</mybatis-starter.version>
         <log4j2.version>2.24.3</log4j2.version>
+        <tracking.version>1.0-SNAPSHOT</tracking.version>
     </properties>
     <!--
     日志用log4j2实现，排除了logback
@@ -58,6 +59,11 @@
                         <artifactId>jsr305</artifactId>
                     </exclusion>
                 </exclusions>
+            </dependency>
+            <dependency>
+                <groupId>com.nona</groupId>
+                <artifactId>change-tracking-api</artifactId>
+                <version>${tracking.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

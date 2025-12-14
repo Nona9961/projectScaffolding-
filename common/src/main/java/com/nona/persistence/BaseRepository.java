@@ -1,4 +1,4 @@
-package com.nona.persisitence;
+package com.nona.persistence;
 
 /**
  * 基础仓储接口

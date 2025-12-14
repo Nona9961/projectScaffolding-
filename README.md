@@ -1,222 +1,133 @@
-# projectScaffolding-
-项目工程的脚手架，免得每次都从零开始搭建
+# Project Scaffolding
 
-common模块是公共模块，api模块是接口模块，server模块是服务模块。
-一般来说common独立在一个project中，api和server在另一个project中
+企业级 Java 后端脚手架，基于 DDD（领域驱动设计）架构，专注于解决 **DDD 领域模型与 RDB 关系型数据库之间的阻抗失衡问题**。
 
-## 使用 JaVer 进行 DDD 领域对象到 RDB 结构映射的设计
+## 技术栈
 
-### 1. 自定义变化处理 (Custom Change Processing)
+| 技术 | 版本 | 说明 |
+|------|------|------|
+| Java | 21 | 使用虚拟线程 |
+| Spring Boot | 3.5.8 | 应用框架 |
+| Spring Data JPA | 3.5.8 | ORM 框架 |
+| Spring Security | 3.5.8 | 安全框架 |
+| Log4j2 | 2.24.3 | 异步日志（Disruptor） |
+| MySQL | 9.x | 生产数据库 |
+| H2 | 2.x | 开发/测试数据库 |
+| Maven | - | 构建工具 |
 
-* **目标：** 将 JaVer 产生的过于细粒度的变化事件聚合为更高级别的领域事件，例如“值对象被添加”、“值对象被移除”等，从而忽略值对象内部字段的变更。
-* **实现方式：** 创建一个 `CustomChangeProcessor` 类，该类接收 JaVer 的原始变化列表 `List<Change>` 作为输入，并输出一个自定义的领域事件列表 `List<DomainChangeEvent>`.
-* **核心逻辑：** 遍历原始变化列表，识别特定的变化模式（例如，先出现列表元素的 `remove` 事件，紧接着出现该元素内部的 `change` 事件），并将其聚合成一个更高级别的领域事件。对于其他类型的变化，可以转换为通用的领域事件。
+## 模块结构
 
-### 2. 领域事件 (Domain Events)
+```
+projectScaffolding/
+├── common/     # 公共模块：工具类、事件系统、ID生成、异常处理
+├── api/        # 接口模块：DTO定义、公共API接口
+└── server/     # 主应用：DDD领域模型、持久化层、控制器
+```
 
-* **目标：** 使用一组自定义的接口或类来表示领域中发生的有意义的变化，这些事件比 JaVer 的 `Change` 更贴近业务语义。
-* **示例：** 可以定义 `ValueObjectRemovedEvent`、`ValueObjectAddedEvent`、`AggregatePropertyChangedEvent` 等接口或类。
+### 模块职责
 
-### 3. 变更集 (Change Set)
+| 模块 | 职责 | 依赖 |
+|------|------|------|
+| **common** | 日志、工具类、事件驱动、分布式ID生成、基础仓储接口 | 无业务依赖，可独立部署 |
+| **api** | 公共接口定义、DTO 模型（Record 类型）、参数验证 | common |
+| **server** | 领域模型、应用服务、基础设施实现、REST 控制器 | api, common |
 
-* **目标：** 创建一个 `ChangeSet` 类，用于存储需要应用到 RDB 的所有操作。这个类将包含一系列针对不同 PO 对象的创建、更新或删除操作。
-* **结构：** `ChangeSet` 内部维护一个操作列表，每个操作可以包含操作类型（create, update, delete）、目标 PO 类型以及需要操作的数据。
+## 核心特性
 
-### 4. 领域对象到 PO 的映射策略 (Domain to PO Mapping Strategies)
+### 1. DDD 分层架构
+```
+server/src/main/java/com/nona/
+├── domain/           # 领域层：聚合根、值对象、领域服务、仓储接口
+│   └── {aggregate}/
+│       ├── entity/   # 聚合根和实体
+│       ├── factory/  # 工厂
+│       ├── ports/    # 防腐层接口
+│       └── repo/     # 仓储接口
+├── application/      # 应用层：应用服务、全局异常处理
+├── controller/       # 接口层：REST 控制器
+└── inf/              # 基础设施层
+    ├── context/      # 请求上下文（聚合根快照）
+    └── persistence/  # 持久化实现
+```
 
-* **目标：** 使用策略模式，为每种需要持久化的聚合根定义一个专门的映射策略，负责将领域对象的变化（以领域事件的形式）转换为对相应 PO 的操作。
-* **实现方式：** 创建一个 `DomainToPoMappingStrategy` 接口，并为每个聚合根实现该接口。每个策略类将接收聚合根对象和领域事件列表作为输入，并生成一个 `ChangeSet`。
+### 2. 分布式 ID 生成
+基于 Snowflake 算法的 `Sequence` 类，支持：
+- 1024 个节点（5位数据中心ID + 5位工作机器ID）
+- 每毫秒 4096 个 ID
+- 时间回拨处理
+- 基于 MAC/PID 自动分配工作 ID
 
-### 5. ORM 集成 (ORM Integration)
-
-* **目标：** 创建一个组件（例如 `OrmIntegrator`），负责接收 `ChangeSet`，并使用具体的 ORM 框架（例如 Hibernate, JPA）执行相应的数据库操作。
-
-### Java 伪代码：
-
+### 3. 事件驱动架构
 ```java
-// 1. 自定义变化处理器
-class CustomChangeProcessor {
-    public List<DomainChangeEvent> process(List<Change> rawChanges) {
-        List<DomainChangeEvent> domainEvents = new ArrayList<>();
-        // ... (识别和聚合原始变化的逻辑)
-        // 示例：检测值对象移除
-        Map<Object, List<Change>> removedValueObjects = new HashMap<>();
-        for (Change change : rawChanges) {
-            if (change instanceof ElementRemoved && isValueObject(change.getAffectedObject().get())) {
-                removedValueObjects.computeIfAbsent(change.getAffectedObject().get(), k -> new ArrayList<>()).add(change);
-            }
-        }
-        for (Change change : rawChanges) {
-            if (change instanceof ElementRemoved && isValueObject(change.getAffectedObject().get())) {
-                domainEvents.add(new ValueObjectRemovedEvent(change.getAffectedObject().get()));
-            } else if (!(change instanceof ElementRemoved) && !(change instanceof ElementAdded)) {
-                // 检查 change 是否属于已移除的值对象，如果是则忽略
-                boolean belongsToRemoved = false;
-                for (Object removedObject : removedValueObjects.keySet()) {
-                    if (change.getAffectedObject().get() == removedObject) {
-                        belongsToRemoved = true;
-                        break;
-                    }
-                }
-                if (!belongsToRemoved) {
-                    domainEvents.add(convertToDomainEvent(change));
-                }
-            } else {
-                domainEvents.add(convertToDomainEvent(change));
-            }
-        }
-        return domainEvents;
-    }
+Event → Dispatcher → EventHandler (同步/异步)
+```
+使用 Java 21 虚拟线程执行异步处理。
 
-    private DomainChangeEvent convertToDomainEvent(Change change) {
-        // ... (将 JaVer 的 Change 转换为自定义的 DomainChangeEvent)
-        return new GenericChangeEvent(change);
-    }
+### 4. 高性能时钟
+`SystemClock` 枚举单例，使用 ScheduledExecutorService 缓存时间戳，解决高并发场景下 `System.currentTimeMillis()` 性能问题。
 
-    private boolean isValueObject(Object object) {
-        return object instanceof Record; // 或者其他判断值对象的方式
-    }
-}
+### 5. 多租户支持
+`BasePO` 包含 `tenantID` 字段，支持数据隔离。
 
-// 2. 领域事件 (接口或抽象类)
-interface DomainChangeEvent {}
+## 快速启动
 
-class ValueObjectRemovedEvent implements DomainChangeEvent {
-    private Object removedValueObject;
-    // ... (构造器和 getter)
-}
+### 开发环境
+```bash
+# 克隆项目
+git clone <repository-url>
+cd projectScaffolding-
 
-class ValueObjectAddedEvent implements DomainChangeEvent {
-    private Object addedValueObject;
-    // ... (构造器和 getter)
-}
+# 编译
+mvn clean install
 
-class GenericChangeEvent implements DomainChangeEvent {
-    private Change rawChange;
-    // ... (构造器和 getter)
-}
+# 启动（默认使用 H2 内存数据库）
+mvn spring-boot:run -pl server
+```
 
-// 3. 变更集
-class ChangeSet {
-    private List<POOperation> operations = new ArrayList<>();
+### 配置文件
+- `application.yml` - 主配置
+- `application-dev.yml` - 开发环境（默认激活）
+- `application-prod.yml` - 生产环境
+- `application-test.yml` - 测试环境
 
-    public void addOperation(POOperation operation) {
-        operations.add(operation);
-    }
+### 端口
+- 开发环境：19890
 
-    public List<POOperation> getOperations() {
-        return operations;
-    }
-}
+## 项目状态
 
-interface POOperation {
-    String getOperationType(); // "create", "update", "delete"
-    String getEntityType(); // PO 类名
-    // ... (存储操作所需的数据，例如字段名和值，或者删除条件)
-}
+### 已完成
+- [x] 基础架构和多模块结构
+- [x] DDD 领域模型框架
+- [x] 事件驱动系统
+- [x] 分布式 ID 生成
+- [x] 全局异常处理
+- [x] 异步日志系统
+- [x] 高性能时钟方案
+- [x] 请求级别的聚合根快照（ThreadContext）
 
-// 4. 领域对象到 PO 的映射策略 (接口)
-interface DomainToPoMappingStrategy<T> {
-    ChangeSet map(T domainObject, List<DomainChangeEvent> domainEvents);
-}
+### 进行中
+- [ ] DDD-RDB 阻抗失衡解决方案（详见 [PLAN.md](./PLAN.md)）
+- [ ] 领域对象变更追踪与差异持久化
 
-// 针对特定聚合根的映射策略 (示例 - Order 聚合根)
-class OrderDomainToPoMappingStrategy implements DomainToPoMappingStrategy<Order> {
-    @Override
-    public ChangeSet map(Order order, List<DomainChangeEvent> domainEvents) {
-        ChangeSet changeSet = new ChangeSet();
-        for (DomainChangeEvent event : domainEvents) {
-            if (event instanceof ValueObjectRemovedEvent) {
-                Object removedItem = ((ValueObjectRemovedEvent) event).getRemovedValueObject();
-                if (removedItem instanceof ItemRecord) {
-                    changeSet.addOperation(new POOperation() {
-                        // ... (创建删除 OrderItemPO 的操作)
-                    });
-                }
-            } else if (event instanceof ValueObjectAddedEvent) {
-                Object addedItem = ((ValueObjectAddedEvent) event).getAddedValueObject();
-                if (addedItem instanceof ItemRecord) {
-                    changeSet.addOperation(new POOperation() {
-                        // ... (创建新的 OrderItemPO 的操作)
-                    });
-                }
-            } else if (event instanceof GenericChangeEvent) {
-                Change rawChange = ((GenericChangeEvent) event).getRawChange();
-                if (rawChange instanceof ObjectChange && !rawChange.getPropertyName().equals("items")) {
-                    changeSet.addOperation(new POOperation() {
-                        // ... (创建更新 OrderPO 字段的操作)
-                    });
-                }
-            }
-        }
-        return changeSet;
-    }
-}
+### 待实现
+- [ ] Controller 层实现
+- [ ] JPA Repository 具体实现
+- [ ] Redis 缓存集成
 
-// 5. ORM 集成
-class OrmIntegrator {
-    public void applyChangeSet(ChangeSet changeSet) {
-        for (POOperation operation : changeSet.getOperations()) {
-            String operationType = operation.getOperationType();
-            String entityType = operation.getEntityType();
-            // ... (根据 operationType 和 entityType 执行 ORM 操作)
-            if ("create".equals(operationType)) {
-                // ...
-            } else if ("update".equals(operationType)) {
-                // ...
-            } else if ("delete".equals(operationType)) {
-                // ...
-            }
-        }
-    }
-}
+## 核心问题：DDD-RDB 阻抗失衡
 
-// 主流程
-class JaVerToRdbMapper {
-    private final Javers javers;
-    private final CustomChangeProcessor changeProcessor = new CustomChangeProcessor();
-    private final Map<Class<?>, DomainToPoMappingStrategy<?>> mappingStrategies = new HashMap<>();
-    private final OrmIntegrator ormIntegrator;
+本项目致力于解决 DDD 与关系型数据库之间的阻抗失衡问题：
 
-    public JaVerToRdbMapper(Javers javers, OrmIntegrator ormIntegrator) {
-        this.javers = javers;
-        this.ormIntegrator = ormIntegrator;
-        mappingStrategies.put(Order.class, new OrderDomainToPoMappingStrategy());
-        // ... (注册其他聚合根的映射策略)
-    }
+| 问题 | 描述 |
+|------|------|
+| **对象-关系映射** | 领域对象是面向对象的，RDB 是关系型的 |
+| **聚合边界** | 聚合根可能对应多张表，难以保证事务一致性 |
+| **值对象持久化** | 值对象无标识，但数据库需要主键 |
+| **变更追踪** | 需要知道领域对象的哪些部分发生了变化 |
+| **懒加载与贪婪加载** | 聚合内对象的加载策略难以平衡 |
 
-    public void mapAndPersist(Object before, Object after) {
-        List<Change> rawChanges = javers.compare(before, after).getChanges();
-        List<DomainChangeEvent> domainEvents = changeProcessor.process(rawChanges);
-        Object aggregateRoot = after; // 假设 'after' 是聚合根
-        DomainToPoMappingStrategy strategy = mappingStrategies.get(aggregateRoot.getClass());
-        if (strategy != null) {
-            ChangeSet changeSet = strategy.map(aggregateRoot, domainEvents);
-            ormIntegrator.applyChangeSet(changeSet);
-        } else {
-            System.err.println("No mapping strategy found for " + aggregateRoot.getClass().getName());
-        }
-    }
+详细解决方案请参考：[PLAN.md](./PLAN.md)
 
-    // ... (main 方法或其他调用入口)
-}
+## 许可证
 
-// 领域对象和 PO 的伪代码
-class Order {
-    private Long id;
-    private List<ItemRecord> items;
-    // ...
-}
-
-record ItemRecord(String name, int price) {}
-
-class OrderPO {
-    private Long id;
-    // ...
-}
-
-class OrderItemPO {
-    private Long id;
-    private Long orderId;
-    // ...
-}
+MIT License

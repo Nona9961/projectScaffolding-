@@ -1,7 +1,7 @@
 package com.nona.util;
 
 
-import com.nona.persisitence.Sequence;
+import com.nona.persistence.Sequence;
 
 public class IDUtils {
     private static final Sequence sequence = new Sequence(1, 1);
