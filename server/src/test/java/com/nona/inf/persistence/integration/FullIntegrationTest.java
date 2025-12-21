@@ -8,7 +8,6 @@ import com.nona.inf.persistence.converters.ConverterRegistry;
 import com.nona.inf.persistence.converters.PoConverter;
 import com.nona.inf.persistence.po.BasePO;
 import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.Disabled;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
@@ -61,8 +60,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  * </pre>
  *
  * @see com.nona.inf.persistence.repository.DifferRepository
- * @see com.nona.inf.persistence.applier.AbstractChangeApplier
- * @see OrderChangeApplier
  * @see OrderRepository
  */
 class FullIntegrationTest {
@@ -1895,6 +1892,151 @@ class FullIntegrationTest {
 
             // 验证 ChangeSet 生成
             // 注意：实际项目中 attributes 应存储为 JSON
+        }
+    }
+
+    // ==================== PoReconstructor 集成测试 ====================
+
+    @Nested
+    @DisplayName("PoReconstructor 集成测试")
+    class PoReconstructorIntegrationTest {
+
+        private com.nona.inf.persistence.dispatcher.ChangeDispatcher changeDispatcher;
+        private com.nona.inf.persistence.reconstructor.PoReconstructor poReconstructor;
+
+        @BeforeEach
+        void setUpReconstructor() {
+            changeDispatcher = new com.nona.inf.persistence.dispatcher.ChangeDispatcher(registry);
+            poReconstructor = new com.nona.inf.persistence.reconstructor.PoReconstructor(registry, changeDispatcher);
+        }
+
+        @Test
+        @DisplayName("主表变更应该返回主表 PO")
+        void shouldReconstructMainPo() {
+            // Given
+            Order order = new Order(1L, "ORD-001");
+            order.setStatus("PENDING");
+            insertOrder(orderConverter.toMainPO(order));
+
+            Order loaded = loadOrder(1L);
+            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
+            uow.registerClean(loaded);
+
+            // When
+            loaded.setStatus("PAID");
+            ChangeSet changeSet = uow.calculateChanges();
+            var result = poReconstructor.reconstruct(loaded, changeSet);
+
+            // Then
+            assertThat(result.getToSave(OrderPO.class)).hasSize(1);
+            assertThat(result.getToSave(OrderPO.class).get(0).getStatus()).isEqualTo("PAID");
+        }
+
+        @Test
+        @DisplayName("子表新增应该返回新增的 PO")
+        void shouldReconstructAddedChildPo() {
+            // Given
+            Order order = new Order(1L, "ORD-001");
+            insertOrder(orderConverter.toMainPO(order));
+
+            Order loaded = loadOrder(1L);
+            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
+            uow.registerClean(loaded);
+
+            // When
+            OrderItem newItem = new OrderItem(101L, "SKU-001", "iPhone", 1, Money.of(new java.math.BigDecimal("5999")));
+            loaded.getItems().add(newItem);
+            ChangeSet changeSet = uow.calculateChanges();
+            var result = poReconstructor.reconstruct(loaded, changeSet);
+
+            // Then
+            assertThat(result.getToSave(OrderItemPO.class)).hasSize(1);
+            assertThat(result.getToSave(OrderItemPO.class).get(0).getProductName()).isEqualTo("iPhone");
+        }
+
+        @Test
+        @DisplayName("子表删除应该返回删除 ID")
+        void shouldReconstructDeletedChildId() {
+            // Given
+            Order order = new Order(1L, "ORD-001");
+            OrderItem item = new OrderItem(101L, "SKU-001", "iPhone", 1, Money.of(new java.math.BigDecimal("5999")));
+            order.getItems().add(item);
+            insertOrder(orderConverter.toMainPO(order));
+            insertOrderItem(item, order.getId());
+
+            Order loaded = loadOrder(1L);
+            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
+            uow.registerClean(loaded);
+
+            // When
+            loaded.getItems().clear();
+            ChangeSet changeSet = uow.calculateChanges();
+            var result = poReconstructor.reconstruct(loaded, changeSet);
+
+            // Then
+            assertThat(result.getToDeleteIds(OrderItemPO.class)).hasSize(1);
+            assertThat(result.getToDeleteIds(OrderItemPO.class).get(0)).isEqualTo(101L);
+        }
+
+        @Test
+        @DisplayName("子表字段变更应该返回更新的 PO")
+        void shouldReconstructUpdatedChildPo() {
+            // Given
+            Order order = new Order(1L, "ORD-001");
+            OrderItem item = new OrderItem(101L, "SKU-001", "iPhone", 1, Money.of(new java.math.BigDecimal("5999")));
+            order.getItems().add(item);
+            insertOrder(orderConverter.toMainPO(order));
+            insertOrderItem(item, order.getId());
+
+            Order loaded = loadOrder(1L);
+            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
+            uow.registerClean(loaded);
+
+            // When
+            loaded.getItems().get(0).setQuantity(3);
+            ChangeSet changeSet = uow.calculateChanges();
+            var result = poReconstructor.reconstruct(loaded, changeSet);
+
+            // Then
+            assertThat(result.getToSave(OrderItemPO.class)).hasSize(1);
+            assertThat(result.getToSave(OrderItemPO.class).get(0).getQuantity()).isEqualTo(3);
+        }
+
+        @Test
+        @DisplayName("混合变更应该返回所有变更的 PO")
+        void shouldReconstructMixedChanges() {
+            // Given
+            Order order = new Order(1L, "ORD-001");
+            order.setStatus("PENDING");
+            OrderItem item1 = new OrderItem(101L, "SKU-001", "iPhone", 1, Money.of(new java.math.BigDecimal("5999")));
+            OrderItem item2 = new OrderItem(102L, "SKU-002", "iPad", 1, Money.of(new java.math.BigDecimal("3999")));
+            order.getItems().add(item1);
+            order.getItems().add(item2);
+            insertOrder(orderConverter.toMainPO(order));
+            insertOrderItem(item1, order.getId());
+            insertOrderItem(item2, order.getId());
+
+            Order loaded = loadOrder(1L);
+            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
+            uow.registerClean(loaded);
+
+            // When: 主表变更 + 子表更新 + 子表删除 + 子表新增
+            loaded.setStatus("PAID");
+            loaded.getItems().get(0).setQuantity(2);
+            loaded.getItems().remove(1);
+            loaded.getItems().add(new OrderItem(103L, "SKU-003", "MacBook", 1, Money.of(new java.math.BigDecimal("9999"))));
+            ChangeSet changeSet = uow.calculateChanges();
+            var result = poReconstructor.reconstruct(loaded, changeSet);
+
+            // Then
+            // 主表
+            assertThat(result.getToSave(OrderPO.class)).hasSize(1);
+            assertThat(result.getToSave(OrderPO.class).get(0).getStatus()).isEqualTo("PAID");
+            // 子表 toSave: 更新的 item1 + 新增的 item3 = 2
+            assertThat(result.getToSave(OrderItemPO.class)).hasSize(2);
+            // 子表 toDelete: 删除的 item2 = 1
+            assertThat(result.getToDeleteIds(OrderItemPO.class)).hasSize(1);
+            assertThat(result.getToDeleteIds(OrderItemPO.class).get(0)).isEqualTo(102L);
         }
     }
 

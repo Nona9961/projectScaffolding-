@@ -1,0 +1,208 @@
+package com.nona.inf.persistence.reconstructor;
+
+import com.nona.changeTracking.domain.model.changeset.ChangeSet;
+import com.nona.changeTracking.domain.model.changeset.FieldChange;
+import com.nona.changeTracking.domain.model.changeset.ItemAddedChange;
+import com.nona.changeTracking.domain.model.changeset.ItemRemovedChange;
+import com.nona.changeTracking.domain.model.snapshot.ObjectNode;
+import com.nona.inf.persistence.converters.CompositePoConverter;
+import com.nona.inf.persistence.converters.ConverterRegistry;
+import com.nona.inf.persistence.converters.PoConverter;
+import com.nona.inf.persistence.dispatcher.ChangeDispatcher;
+import com.nona.inf.persistence.dispatcher.DispatchedChanges;
+import lombok.RequiredArgsConstructor;
+
+import java.lang.reflect.Field;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * PO 重建器
+ * <p>
+ * 从聚合根 (Root) 和变更集 (ChangeSet) 重建需要持久化的 PO 对象。
+ * </p>
+ * <p>
+ * 职责：
+ * <ul>
+ *     <li>根据 ChangeSet 识别哪些 PO 需要保存（新增/更新）</li>
+ *     <li>根据 ChangeSet 识别哪些 PO 需要删除</li>
+ *     <li>通过 ConverterRegistry 获取对应的转换器，将领域对象转换为 PO</li>
+ * </ul>
+ * </p>
+ * <p>
+ * 使用方式：
+ * <pre>{@code
+ * ReconstructedPos pos = poReconstructor.reconstruct(order, changeSet);
+ * orderPORepo.saveAll(pos.getToSave(OrderPO.class));
+ * orderItemPORepo.saveAll(pos.getToSave(OrderItemPO.class));
+ * orderItemPORepo.deleteAllById(pos.getToDeleteIds(OrderItemPO.class));
+ * }</pre>
+ * </p>
+ *
+ * @author nona
+ */
+@RequiredArgsConstructor
+public class PoReconstructor {
+
+    private static final Pattern IDENTIFIER_PATTERN = Pattern.compile("\\w+\\[(.+?)]");
+
+    private final ConverterRegistry converterRegistry;
+    private final ChangeDispatcher changeDispatcher;
+
+    /**
+     * 从 Root 和 ChangeSet 重建 PO 对象
+     *
+     * @param root      聚合根
+     * @param changeSet 变更集
+     * @return 重建后的 PO 对象
+     */
+    public ReconstructedPos reconstruct(Object root, ChangeSet changeSet) {
+        final List<Object> toSave = new ArrayList<>();
+        final List<DeletionInfo> toDelete = new ArrayList<>();
+        final Class<?> rootClass = root.getClass();
+
+        final DispatchedChanges dispatched = changeDispatcher.dispatch(changeSet, rootClass);
+
+        // 处理主表变更
+        if (!dispatched.getMainTableChanges().isEmpty()) {
+            converterRegistry.getCompositeConverter(rootClass)
+                    .ifPresent(converter -> toSave.add(convertToMainPO(converter, root)));
+        }
+
+        // 处理子表变更
+        final Map<String, PoConverter<?, ?>> childConverters = converterRegistry.getChildConverters(rootClass);
+        for (final Map.Entry<String, DispatchedChanges.CollectionChanges> entry : dispatched.getChildTableChanges().entrySet()) {
+            final String fieldName = entry.getKey();
+            final DispatchedChanges.CollectionChanges changes = entry.getValue();
+            final PoConverter<?, ?> converter = childConverters.get(fieldName);
+
+            if (converter != null) {
+                processChildChanges(root, fieldName, changes, converter, toSave, toDelete);
+            }
+        }
+
+        return new ReconstructedPos(toSave, toDelete);
+    }
+
+    /**
+     * 处理子表变更
+     * <p>
+     * 根据 CollectionChanges 中的新增、删除、更新信息，
+     * 将对应的领域对象转换为 PO 并分类到 toSave 或 toDelete 列表中。
+     * </p>
+     *
+     * @param root       聚合根对象
+     * @param fieldName  子表对应的字段名
+     * @param changes    该字段的变更信息
+     * @param converter  领域对象到 PO 的转换器
+     * @param toSave     输出：需要保存的 PO 列表
+     * @param toDelete   输出：需要删除的 PO 信息列表
+     */
+    private void processChildChanges(
+            Object root,
+            String fieldName,
+            DispatchedChanges.CollectionChanges changes,
+            PoConverter<?, ?> converter,
+            List<Object> toSave,
+            List<DeletionInfo> toDelete) {
+
+        // 新增：从 Root 中查找新增的子对象，转换为 PO
+        for (final ItemAddedChange iac : changes.getAdditions()) {
+            final Object identifier = ((ObjectNode) iac.addedItem()).identifier();
+            final Object childDO = findChildFromRoot(root, fieldName, identifier);
+            if (childDO != null) {
+                toSave.add(convertToPO(converter, childDO));
+            }
+        }
+
+        // 删除：记录需要删除的 PO 主键（Long 类型，与 BasePO.id 一致）
+        for (final ItemRemovedChange irc : changes.getRemovals()) {
+            final Object identifier = ((ObjectNode) irc.removedItem()).identifier();
+            toDelete.add(new DeletionInfo(converter.poClass(), (Long) identifier));
+        }
+
+        // 更新：从 Root 中查找变更的子对象，转换为 PO
+        final Set<Object> updatedIdentifiers = extractIdentifiersFromFieldChanges(changes.getFieldChanges());
+        for (final Object identifier : updatedIdentifiers) {
+            final Object childDO = findChildFromRoot(root, fieldName, identifier);
+            if (childDO != null) {
+                toSave.add(convertToPO(converter, childDO));
+            }
+        }
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Object convertToMainPO(CompositePoConverter converter, Object root) {
+        return converter.toMainPO(root);
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Object convertToPO(PoConverter converter, Object domainObject) {
+        return converter.toPO(domainObject);
+    }
+
+    private Set<Object> extractIdentifiersFromFieldChanges(List<FieldChange> fieldChanges) {
+        final Set<Object> identifiers = new HashSet<>();
+        for (final FieldChange fc : fieldChanges) {
+            final Matcher matcher = IDENTIFIER_PATTERN.matcher(fc.path());
+            if (matcher.find()) {
+                final String idStr = matcher.group(1);
+                try {
+                    identifiers.add(Long.parseLong(idStr));
+                } catch (NumberFormatException e) {
+                    identifiers.add(idStr);
+                }
+            }
+        }
+        return identifiers;
+    }
+
+    private Object findChildFromRoot(Object root, String fieldName, Object identifier) {
+        try {
+            final Field field = findField(root.getClass(), fieldName);
+            if (field == null) {
+                return null;
+            }
+            field.setAccessible(true);
+            final Object fieldValue = field.get(root);
+
+            if (fieldValue instanceof Collection<?> collection) {
+                for (final Object item : collection) {
+                    final Object itemId = extractIdentifier(item);
+                    if (Objects.equals(itemId, identifier)) {
+                        return item;
+                    }
+                }
+            }
+        } catch (IllegalAccessException e) {
+            // ignore
+        }
+        return null;
+    }
+
+    private Field findField(Class<?> clazz, String fieldName) {
+        Class<?> current = clazz;
+        while (current != null && current != Object.class) {
+            try {
+                return current.getDeclaredField(fieldName);
+            } catch (NoSuchFieldException e) {
+                current = current.getSuperclass();
+            }
+        }
+        return null;
+    }
+
+    private Object extractIdentifier(Object item) {
+        try {
+            final Field idField = findField(item.getClass(), "id");
+            if (idField != null) {
+                idField.setAccessible(true);
+                return idField.get(item);
+            }
+        } catch (IllegalAccessException e) {
+            // ignore
+        }
+        return null;
+    }
+}

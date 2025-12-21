@@ -3,7 +3,6 @@ package com.nona.inf.persistence.integration;
 import com.nona.changeTracking.domain.model.changeset.*;
 import com.nona.changeTracking.domain.model.snapshot.ObjectNode;
 import com.nona.inf.context.ThreadContext;
-import com.nona.inf.persistence.applier.PathParser;
 import com.nona.inf.persistence.converters.ConverterRegistry;
 import com.nona.inf.persistence.converters.PoConverter;
 import com.nona.inf.persistence.converters.RdbGeneralConvertor;
@@ -23,7 +22,6 @@ class OrderRepository extends DifferRepository<FullIntegrationTest.Order, FullIn
 
     private final JdbcTemplate jdbc;
     private final ConverterRegistry converterRegistry;
-    private final PathParser pathParser = new PathParser();
 
     public OrderRepository(
             ListCrudRepository<FullIntegrationTest.OrderPO, Long> repository,
@@ -187,7 +185,7 @@ class OrderRepository extends DifferRepository<FullIntegrationTest.Order, FullIn
 
         for (Change change : changeSet.getLeafChanges()) {
             String path = change.path();
-            String rootField = pathParser.extractRootFieldName(path);
+            String rootField = extractRootFieldName(path);
 
             if (childConverters.containsKey(rootField)) {
                 categorizeChildChange(change, rootField, childFieldChanges, additions, removals);
@@ -433,5 +431,19 @@ class OrderRepository extends DifferRepository<FullIntegrationTest.Order, FullIn
         int start = idxPart.indexOf('[');
         int end = idxPart.indexOf(']');
         return idxPart.substring(start + 1, end);
+    }
+
+    /**
+     * 提取路径的根字段名
+     * <p>
+     * 示例：items[101].quantity → items
+     */
+    private String extractRootFieldName(String path) {
+        int bracketIdx = path.indexOf('[');
+        int dotIdx = path.indexOf('.');
+        if (bracketIdx == -1 && dotIdx == -1) return path;
+        if (bracketIdx == -1) return path.substring(0, dotIdx);
+        if (dotIdx == -1) return path.substring(0, bracketIdx);
+        return path.substring(0, Math.min(bracketIdx, dotIdx));
     }
 }

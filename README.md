@@ -106,6 +106,7 @@ mvn spring-boot:run -pl server
 - [x] 请求级别的聚合根快照（ThreadContext）
 - [x] **DDD-RDB 阻抗失衡解决方案 v3.0**（详见 [PLAN.md](./PLAN.md)）
 - [x] 领域对象变更追踪与差异持久化（doInsert/doUpdate 模式）
+- [x] **PoReconstructor**：从 Root+ChangeSet 自动重建 PO 对象（支持 ORM 持久化）
 
 ### 待实现
 - [ ] Controller 层实现
@@ -125,6 +126,119 @@ mvn spring-boot:run -pl server
 | **懒加载与贪婪加载** | 聚合内对象的加载策略难以平衡 |
 
 详细解决方案请参考：[PLAN.md](./PLAN.md)
+
+## PoReconstructor 用法
+
+`PoReconstructor` 从聚合根和变更集自动重建需要持久化的 PO 对象，支持 JPA/MyBatis 等 ORM 框架。
+
+### 基本用法
+
+```java
+// 1. 创建组件
+ConverterRegistry registry = new ConverterRegistry();
+registry.register(new OrderConverter());       // 主表转换器
+registry.register(new OrderItemConverter());   // 子表转换器
+
+ChangeDispatcher dispatcher = new ChangeDispatcher(registry);
+PoReconstructor reconstructor = new PoReconstructor(registry, dispatcher);
+
+// 2. 在 Repository.doUpdate() 中使用
+@Override
+protected void doUpdate(Order root, ChangeSet changeSet) {
+    ReconstructedPos pos = reconstructor.reconstruct(root, changeSet);
+
+    // 保存主表
+    orderPORepo.saveAll(pos.getToSave(OrderPO.class));
+
+    // 保存子表（新增 + 更新）
+    orderItemPORepo.saveAll(pos.getToSave(OrderItemPO.class));
+
+    // 删除子表
+    orderItemPORepo.deleteAllById(pos.getToDeleteIds(OrderItemPO.class));
+}
+```
+
+### ReconstructedPos API
+
+| 方法 | 返回值 | 说明 |
+|------|--------|------|
+| `toSave()` | `List<Object>` | 所有需要保存的 PO（新增+更新） |
+| `toDelete()` | `List<DeletionInfo>` | 所有需要删除的 PO 信息 |
+| `getToSave(Class<T>)` | `List<T>` | 按类型过滤需要保存的 PO |
+| `getToDeleteIds(Class<?>)` | `List<Long>` | 按类型过滤需要删除的 ID |
+
+### 转换器定义
+
+```java
+// 主表转换器
+public class OrderConverter implements CompositePoConverter<Order, OrderPO> {
+    @Override
+    public Class<Order> rootClass() { return Order.class; }
+
+    @Override
+    public Class<OrderPO> mainPoClass() { return OrderPO.class; }
+
+    @Override
+    public OrderPO toMainPO(Order root) {
+        OrderPO po = new OrderPO();
+        po.setId(root.getId());
+        po.setStatus(root.getStatus());
+        return po;
+    }
+
+    @Override
+    public Order toRoot(OrderPO mainPO, Map<String, Object> childData) {
+        // 从 PO 还原领域对象
+    }
+}
+
+// 子表转换器
+public class OrderItemConverter implements PoConverter<OrderItem, OrderItemPO> {
+    @Override
+    public Class<OrderItem> domainClass() { return OrderItem.class; }
+
+    @Override
+    public Class<OrderItemPO> poClass() { return OrderItemPO.class; }
+
+    @Override
+    public OrderItemPO toPO(OrderItem domain) {
+        OrderItemPO po = new OrderItemPO();
+        po.setId(domain.getId());
+        po.setProductName(domain.getProductName());
+        po.setQuantity(domain.getQuantity());
+        return po;
+    }
+
+    @Override
+    public OrderItem toDomain(OrderItemPO po) {
+        return new OrderItem(po.getId(), po.getProductName(), po.getQuantity());
+    }
+}
+```
+
+### MyBatis 示例
+
+```java
+@Override
+protected void doUpdate(Order root, ChangeSet changeSet) {
+    ReconstructedPos pos = reconstructor.reconstruct(root, changeSet);
+
+    // 主表
+    for (OrderPO po : pos.getToSave(OrderPO.class)) {
+        orderMapper.updateById(po);
+    }
+
+    // 子表保存（insertOrUpdate）
+    for (OrderItemPO po : pos.getToSave(OrderItemPO.class)) {
+        orderItemMapper.insertOrUpdate(po);
+    }
+
+    // 子表删除
+    for (Long id : pos.getToDeleteIds(OrderItemPO.class)) {
+        orderItemMapper.deleteById(id);
+    }
+}
+```
 
 ## 许可证
 
