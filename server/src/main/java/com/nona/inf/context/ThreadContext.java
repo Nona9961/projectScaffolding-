@@ -19,6 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ThreadContext {
     private String tenantID;
     private Map<Long, Object> snapshots = new ConcurrentHashMap<>(8);   // 假设每条线程最多有6个快照，8 * 0。75 = 6
+    private Map<String, Object> attributes = new ConcurrentHashMap<>(4);  // 通用属性存储（如 UnitOfWork）
 
     public void saveSnapshot(Long id, Object root) {
         snapshots.put(id, root);
@@ -27,6 +28,28 @@ public class ThreadContext {
     @SuppressWarnings("unchecked")
     public <T> T getSnapshot(Long id, TypeReference<T> reference) {
         return (T) snapshots.get(id);
+    }
+
+    /**
+     * 设置属性
+     */
+    public void setAttribute(String key, Object value) {
+        attributes.put(key, value);
+    }
+
+    /**
+     * 获取属性
+     */
+    @SuppressWarnings("unchecked")
+    public <T> T getAttribute(String key) {
+        return (T) attributes.get(key);
+    }
+
+    /**
+     * 移除属性
+     */
+    public void removeAttribute(String key) {
+        attributes.remove(key);
     }
 
 }

@@ -104,10 +104,8 @@ mvn spring-boot:run -pl server
 - [x] 异步日志系统
 - [x] 高性能时钟方案
 - [x] 请求级别的聚合根快照（ThreadContext）
-
-### 进行中
-- [ ] DDD-RDB 阻抗失衡解决方案（详见 [PLAN.md](./PLAN.md)）
-- [ ] 领域对象变更追踪与差异持久化
+- [x] **DDD-RDB 阻抗失衡解决方案 v3.0**（详见 [PLAN.md](./PLAN.md)）
+- [x] 领域对象变更追踪与差异持久化（doInsert/doUpdate 模式）
 
 ### 待实现
 - [ ] Controller 层实现

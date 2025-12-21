@@ -1,9 +1,12 @@
 package com.nona.inf.persistence.repository;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.nona.changeTracking.domain.model.changeset.ChangeSet;
+import com.nona.changeTracking.domain.model.unitofwork.UnitOfWork;
 import com.nona.inf.context.ThreadContext;
 import com.nona.inf.persistence.converters.RdbGeneralConvertor;
 import com.nona.inf.persistence.po.BasePO;
+import com.nona.inf.persistence.tracking.UnitOfWorkProvider;
 import com.nona.persistence.BaseRepository;
 import jakarta.annotation.Nullable;
 import lombok.RequiredArgsConstructor;
@@ -13,7 +16,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * 支持基于diff的仓储，因为JPA的快照是PO对象，而diff应该从比较root对象快照而来，所以不能使用hibernate的快照
+ * 支持基于diff的仓储，集成 UnitOfWork 实现变更追踪
  *
  * @param <Root>  聚合根
  * @param <PO>    PO对象
@@ -23,11 +26,14 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public abstract class DifferRepository<Root, PO extends BasePO, Other> implements BaseRepository<Long, Root> {
 
+    private static final String UOW_KEY = "UNIT_OF_WORK";
+
     protected final ListCrudRepository<PO, Long> repository;
     protected final ThreadContext threadContext;
-    private final TypeReference<Root> rootType = new TypeReference<>() {
-    };
     protected final RdbGeneralConvertor<Root, PO, Other> convertor;
+    protected final UnitOfWorkProvider unitOfWorkProvider;
+
+    private final TypeReference<Root> rootType = new TypeReference<>() {};
 
     @Override
     public Root getByID(Long id) {
@@ -40,6 +46,9 @@ public abstract class DifferRepository<Root, PO extends BasePO, Other> implement
         if (root == null) {
             return null;
         }
+
+        // 注册到 UnitOfWork 进行追踪
+        getOrCreateUnitOfWork().registerClean(root);
         threadContext.saveSnapshot(id, root);
         return root;
     }
@@ -57,21 +66,57 @@ public abstract class DifferRepository<Root, PO extends BasePO, Other> implement
 
     protected abstract Long retrieveIDFromRoot(Root root);
 
+    /**
+     * 新增聚合根（子类实现）
+     * <p>
+     * 实现方式由子类决定：JDBC / JPA / 混合模式
+     *
+     * @param root 聚合根
+     */
+    protected abstract void doInsert(Root root);
+
+    /**
+     * 更新聚合根（子类实现）
+     * <p>
+     * 可选实现方式：
+     * <ul>
+     *     <li>遍历 changeSet.getLeafChanges() 手动生成 SQL (JDBC)</li>
+     *     <li>从 ChangeSet 更新 PO，让 JPA 生成 SQL</li>
+     *     <li>利用 changeSet.getAllChanges() 的树形结构递归处理</li>
+     * </ul>
+     *
+     * @param root      当前聚合根状态
+     * @param changeSet 变更集（包含完整树形结构）
+     */
+    protected abstract void doUpdate(Root root, ChangeSet changeSet);
+
     @Override
     public boolean save(Root root) {
         Objects.requireNonNull(root);
         final Long id = retrieveIDFromRoot(root);
-        final Root snapshot = threadContext.getSnapshot(id, rootType);
-        if (snapshot == null) {
-            // insert
-            final PO po = convertor.convertToPO(root);
-            repository.save(po);
+        final UnitOfWork uow = getOrCreateUnitOfWork();
+
+        if (!isTracked(id)) {
+            // 新增：子类自由实现持久化策略
+            doInsert(root);
+            uow.registerClean(root);
             threadContext.saveSnapshot(id, root);
             return true;
         }
-        // todo diff
+
+        // 计算变更
+        final ChangeSet changeSet = uow.calculateChanges();
+        if (changeSet.isEmpty()) {
+            return false;
+        }
+
+        // 应用变更：子类自由实现持久化策略
+        doUpdate(root, changeSet);
+
+        // 重新注册快照
+        uow.registerClean(root);
         threadContext.saveSnapshot(id, root);
-        return false;
+        return true;
     }
 
     @Override
@@ -84,4 +129,22 @@ public abstract class DifferRepository<Root, PO extends BasePO, Other> implement
         return 0;
     }
 
+    /**
+     * 检查是否已被追踪
+     */
+    private boolean isTracked(Long id) {
+        return threadContext.getSnapshot(id, rootType) != null;
+    }
+
+    /**
+     * 获取或创建 UnitOfWork（请求级别单例）
+     */
+    protected UnitOfWork getOrCreateUnitOfWork() {
+        UnitOfWork uow = threadContext.getAttribute(UOW_KEY);
+        if (uow == null) {
+            uow = unitOfWorkProvider.create();
+            threadContext.setAttribute(UOW_KEY, uow);
+        }
+        return uow;
+    }
 }

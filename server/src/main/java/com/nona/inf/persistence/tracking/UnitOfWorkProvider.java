@@ -23,9 +23,9 @@ public class UnitOfWorkProvider {
     private final Set<String> valuePackages;
 
     /**
-     * 缓存的 TrackingCapabilityProvider 类，避免每次 create() 都进行 SPI 查找
+     * 缓存的 TrackingCapabilityProvider 类，延迟初始化
      */
-    private final Class<? extends TrackingCapabilityProvider> providerClass;
+    private volatile Class<? extends TrackingCapabilityProvider> providerClass;
 
     /**
      * 从配置属性创建提供者
@@ -39,7 +39,6 @@ public class UnitOfWorkProvider {
         this.extractors = builder.build();
         this.valueTypes = resolveValueTypes(properties);
         this.valuePackages = new HashSet<>(properties.getValueTypePackages());
-        this.providerClass = discoverProviderClass();
     }
 
     /**
@@ -56,7 +55,6 @@ public class UnitOfWorkProvider {
         this.extractors = new HashMap<>(Objects.requireNonNull(extractors));
         this.valueTypes = new HashSet<>(Objects.requireNonNull(valueTypes));
         this.valuePackages = new HashSet<>(Objects.requireNonNull(valuePackages));
-        this.providerClass = discoverProviderClass();
     }
 
     /**
@@ -67,6 +65,15 @@ public class UnitOfWorkProvider {
      * @return 配置好的 UnitOfWork 实例
      */
     public UnitOfWork create() {
+        // 延迟初始化 providerClass
+        if (providerClass == null) {
+            synchronized (this) {
+                if (providerClass == null) {
+                    providerClass = discoverProviderClass();
+                }
+            }
+        }
+
         // 使用缓存的 provider 类创建新实例
         TrackingCapabilityProvider provider = createProviderInstance();
 
