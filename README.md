@@ -129,10 +129,6 @@ projectScaffolding/
 - [x] 事件驱动架构
 - [x] 分布式 ID 生成
 
-**待实现**
-- [ ] Controller 层实现
-- [ ] Redis 缓存集成
-
 ## 许可证
 
 MIT
