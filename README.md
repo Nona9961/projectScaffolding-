@@ -1,245 +1,138 @@
 # Project Scaffolding
 
-企业级 Java 后端脚手架，基于 DDD（领域驱动设计）架构，专注于解决 **DDD 领域模型与 RDB 关系型数据库之间的阻抗失衡问题**。
+企业级 Java 后端脚手架，基于 DDD 架构，专注于解决 **DDD 领域模型与关系型数据库之间的阻抗失衡问题**。
+
+## 快速开始
+
+```bash
+# 编译并安装
+mvn clean install
+
+# 启动（默认 H2 内存数据库）
+mvn spring-boot:run -pl server
+
+# 访问
+# http://localhost:19890
+# H2 控制台：http://localhost:19890/h2
+```
+
+## 核心流程
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  加载聚合根 → 注册到 UOW → 业务修改 → 计算变更 → 重建 PO → 持久化  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## 三步快速上手
+
+### 1. 定义领域模型
+
+```java
+// 聚合根
+class Order {
+    Long id;
+    OrderStatus status;
+    List<OrderItem> items;  // 子实体
+
+    void addItem(OrderItem item) { items.add(item); }
+    void confirm() { status = CONFIRMED; }
+}
+
+// 值对象（不会被递归追踪）
+record Money(BigDecimal amount) {}
+```
+
+### 2. 配置 UOW（核心！）
+
+```java
+// 在 Repository 构造时配置
+UnitOfWorkProvider uowProvider = UnitOfWorkProvider.builder()
+    .withIdentifier(Order.class, Order::getId)
+    .withIdentifier(OrderItem.class, OrderItem::getId)
+    .withValueType(Money.class)      // 值类型不展开追踪
+    .build();
+
+// UOW 自动追踪：
+// 1. getByID() 时注册快照
+// 2. 修改字段时记录变更
+// 3. save() 时生成 ChangeSet
+```
+
+### 3. 实现 Repository
+
+```java
+// 继承 DifferRepository
+class OrderRepositoryImpl extends DifferRepository<Order, OrderPO, Void>
+        implements OrderRepository {
+
+    @Override
+    protected void doInsert(Order root) {
+        orderPO.save(toPO(root));           // 新增主表
+        itemPO.saveAll(toPOs(root.items));  // 新增子表
+    }
+
+    @Override
+    protected void doUpdate(Order root, ChangeSet changeSet) {
+        ReconstructedPos pos = reconstructor.reconstruct(root, changeSet);
+
+        orderPO.saveAll(pos.getToSave(OrderPO.class));           // 主表
+        itemPO.saveAll(pos.getToSave(OrderItemPO.class));        // 子表新增+更新
+        itemPO.deleteAllById(pos.getToDeleteIds(OrderItemPO.class)); // 子表删除
+    }
+}
+```
+
+## 配置说明
+
+### 配置文件（application.yml）
+
+```yaml
+change-tracking:
+  default-identifier: id              # 默认标识字段
+  value-type-packages:                # 值类型包
+    - com.nona.domain.order.vo
+  value-types:                        # 值类型类
+    - com.nona.domain.common.Money
+```
+
+### 标识符配置优先级
+
+```
+方法配置 > 字段覆盖 > 默认字段
+```
 
 ## 技术栈
 
-| 技术 | 版本 | 说明 |
+| 技术 | 版本 | 用途 |
 |------|------|------|
-| Java | 21 | 使用虚拟线程 |
+| Java | 21 | 虚拟线程 |
 | Spring Boot | 3.5.8 | 应用框架 |
-| Spring Data JPA | 3.5.8 | ORM 框架 |
-| Spring Security | 3.5.8 | 安全框架 |
-| Log4j2 | 2.24.3 | 异步日志（Disruptor） |
-| MySQL | 9.x | 生产数据库 |
-| H2 | 2.x | 开发/测试数据库 |
-| Maven | - | 构建工具 |
+| Spring Data JPA | 3.5.8 | ORM |
+| Log4j2 | 2.24.3 | 异步日志 |
 
 ## 模块结构
 
 ```
 projectScaffolding/
-├── common/     # 公共模块：工具类、事件系统、ID生成、异常处理
-├── api/        # 接口模块：DTO定义、公共API接口
-└── server/     # 主应用：DDD领域模型、持久化层、控制器
+├── common/     # 公共模块（工具、事件、ID生成）
+├── api/        # 接口模块（DTO、API定义）
+└── server/     # 主应用（DDD领域模型、持久化）
 ```
-
-### 模块职责
-
-| 模块 | 职责 | 依赖 |
-|------|------|------|
-| **common** | 日志、工具类、事件驱动、分布式ID生成、基础仓储接口 | 无业务依赖，可独立部署 |
-| **api** | 公共接口定义、DTO 模型（Record 类型）、参数验证 | common |
-| **server** | 领域模型、应用服务、基础设施实现、REST 控制器 | api, common |
-
-## 核心特性
-
-### 1. DDD 分层架构
-```
-server/src/main/java/com/nona/
-├── domain/           # 领域层：聚合根、值对象、领域服务、仓储接口
-│   └── {aggregate}/
-│       ├── entity/   # 聚合根和实体
-│       ├── factory/  # 工厂
-│       ├── ports/    # 防腐层接口
-│       └── repo/     # 仓储接口
-├── application/      # 应用层：应用服务、全局异常处理
-├── controller/       # 接口层：REST 控制器
-└── inf/              # 基础设施层
-    ├── context/      # 请求上下文（聚合根快照）
-    └── persistence/  # 持久化实现
-```
-
-### 2. 分布式 ID 生成
-基于 Snowflake 算法的 `Sequence` 类，支持：
-- 1024 个节点（5位数据中心ID + 5位工作机器ID）
-- 每毫秒 4096 个 ID
-- 时间回拨处理
-- 基于 MAC/PID 自动分配工作 ID
-
-### 3. 事件驱动架构
-```java
-Event → Dispatcher → EventHandler (同步/异步)
-```
-使用 Java 21 虚拟线程执行异步处理。
-
-### 4. 高性能时钟
-`SystemClock` 枚举单例，使用 ScheduledExecutorService 缓存时间戳，解决高并发场景下 `System.currentTimeMillis()` 性能问题。
-
-### 5. 多租户支持
-`BasePO` 包含 `tenantID` 字段，支持数据隔离。
-
-## 快速启动
-
-### 开发环境
-```bash
-# 克隆项目
-git clone <repository-url>
-cd projectScaffolding-
-
-# 编译
-mvn clean install
-
-# 启动（默认使用 H2 内存数据库）
-mvn spring-boot:run -pl server
-```
-
-### 配置文件
-- `application.yml` - 主配置
-- `application-dev.yml` - 开发环境（默认激活）
-- `application-prod.yml` - 生产环境
-- `application-test.yml` - 测试环境
-
-### 端口
-- 开发环境：19890
 
 ## 项目状态
 
-### 已完成
-- [x] 基础架构和多模块结构
+**已完成**
 - [x] DDD 领域模型框架
-- [x] 事件驱动系统
+- [x] 变更追踪与差异持久化
+- [x] PoReconstructor 自动重建 PO
+- [x] 事件驱动架构
 - [x] 分布式 ID 生成
-- [x] 全局异常处理
-- [x] 异步日志系统
-- [x] 高性能时钟方案
-- [x] 请求级别的聚合根快照（ThreadContext）
-- [x] **DDD-RDB 阻抗失衡解决方案 v3.0**（详见 [PLAN.md](./PLAN.md)）
-- [x] 领域对象变更追踪与差异持久化（doInsert/doUpdate 模式）
-- [x] **PoReconstructor**：从 Root+ChangeSet 自动重建 PO 对象（支持 ORM 持久化）
 
-### 待实现
+**待实现**
 - [ ] Controller 层实现
-- [ ] JPA Repository 具体实现
 - [ ] Redis 缓存集成
-
-## 核心问题：DDD-RDB 阻抗失衡
-
-本项目致力于解决 DDD 与关系型数据库之间的阻抗失衡问题：
-
-| 问题 | 描述 |
-|------|------|
-| **对象-关系映射** | 领域对象是面向对象的，RDB 是关系型的 |
-| **聚合边界** | 聚合根可能对应多张表，难以保证事务一致性 |
-| **值对象持久化** | 值对象无标识，但数据库需要主键 |
-| **变更追踪** | 需要知道领域对象的哪些部分发生了变化 |
-| **懒加载与贪婪加载** | 聚合内对象的加载策略难以平衡 |
-
-详细解决方案请参考：[PLAN.md](./PLAN.md)
-
-## PoReconstructor 用法
-
-`PoReconstructor` 从聚合根和变更集自动重建需要持久化的 PO 对象，支持 JPA/MyBatis 等 ORM 框架。
-
-### 基本用法
-
-```java
-// 1. 创建组件
-ConverterRegistry registry = new ConverterRegistry();
-registry.register(new OrderConverter());       // 主表转换器
-registry.register(new OrderItemConverter());   // 子表转换器
-
-ChangeDispatcher dispatcher = new ChangeDispatcher(registry);
-PoReconstructor reconstructor = new PoReconstructor(registry, dispatcher);
-
-// 2. 在 Repository.doUpdate() 中使用
-@Override
-protected void doUpdate(Order root, ChangeSet changeSet) {
-    ReconstructedPos pos = reconstructor.reconstruct(root, changeSet);
-
-    // 保存主表
-    orderPORepo.saveAll(pos.getToSave(OrderPO.class));
-
-    // 保存子表（新增 + 更新）
-    orderItemPORepo.saveAll(pos.getToSave(OrderItemPO.class));
-
-    // 删除子表
-    orderItemPORepo.deleteAllById(pos.getToDeleteIds(OrderItemPO.class));
-}
-```
-
-### ReconstructedPos API
-
-| 方法 | 返回值 | 说明 |
-|------|--------|------|
-| `toSave()` | `List<Object>` | 所有需要保存的 PO（新增+更新） |
-| `toDelete()` | `List<DeletionInfo>` | 所有需要删除的 PO 信息 |
-| `getToSave(Class<T>)` | `List<T>` | 按类型过滤需要保存的 PO |
-| `getToDeleteIds(Class<?>)` | `List<Long>` | 按类型过滤需要删除的 ID |
-
-### 转换器定义
-
-```java
-// 主表转换器
-public class OrderConverter implements CompositePoConverter<Order, OrderPO> {
-    @Override
-    public Class<Order> rootClass() { return Order.class; }
-
-    @Override
-    public Class<OrderPO> mainPoClass() { return OrderPO.class; }
-
-    @Override
-    public OrderPO toMainPO(Order root) {
-        OrderPO po = new OrderPO();
-        po.setId(root.getId());
-        po.setStatus(root.getStatus());
-        return po;
-    }
-
-    @Override
-    public Order toRoot(OrderPO mainPO, Map<String, Object> childData) {
-        // 从 PO 还原领域对象
-    }
-}
-
-// 子表转换器
-public class OrderItemConverter implements PoConverter<OrderItem, OrderItemPO> {
-    @Override
-    public Class<OrderItem> domainClass() { return OrderItem.class; }
-
-    @Override
-    public Class<OrderItemPO> poClass() { return OrderItemPO.class; }
-
-    @Override
-    public OrderItemPO toPO(OrderItem domain) {
-        OrderItemPO po = new OrderItemPO();
-        po.setId(domain.getId());
-        po.setProductName(domain.getProductName());
-        po.setQuantity(domain.getQuantity());
-        return po;
-    }
-
-    @Override
-    public OrderItem toDomain(OrderItemPO po) {
-        return new OrderItem(po.getId(), po.getProductName(), po.getQuantity());
-    }
-}
-```
-
-### MyBatis 示例
-
-```java
-@Override
-protected void doUpdate(Order root, ChangeSet changeSet) {
-    ReconstructedPos pos = reconstructor.reconstruct(root, changeSet);
-
-    // 主表
-    for (OrderPO po : pos.getToSave(OrderPO.class)) {
-        orderMapper.updateById(po);
-    }
-
-    // 子表保存（insertOrUpdate）
-    for (OrderItemPO po : pos.getToSave(OrderItemPO.class)) {
-        orderItemMapper.insertOrUpdate(po);
-    }
-
-    // 子表删除
-    for (Long id : pos.getToDeleteIds(OrderItemPO.class)) {
-        orderItemMapper.deleteById(id);
-    }
-}
-```
 
 ## 许可证
 
-MIT License
+MIT
