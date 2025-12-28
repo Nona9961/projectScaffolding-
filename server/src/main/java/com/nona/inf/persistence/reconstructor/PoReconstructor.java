@@ -71,11 +71,11 @@ public class PoReconstructor {
         }
 
         // 处理子表变更
-        final Map<String, PoConverter<?, ?>> childConverters = converterRegistry.getChildConverters(rootClass);
+        final Map<String, PoConverter<?, ?>> allConverters = converterRegistry.getAllConverters();
         for (final Map.Entry<String, DispatchedChanges.CollectionChanges> entry : dispatched.getChildTableChanges().entrySet()) {
             final String fieldName = entry.getKey();
             final DispatchedChanges.CollectionChanges changes = entry.getValue();
-            final PoConverter<?, ?> converter = childConverters.get(fieldName);
+            final PoConverter<?, ?> converter = allConverters.get(fieldName);
 
             if (converter != null) {
                 processChildChanges(root, fieldName, changes, converter, toSave, toDelete);
@@ -159,26 +159,74 @@ public class PoReconstructor {
     }
 
     private Object findChildFromRoot(Object root, String fieldName, Object identifier) {
-        try {
-            final Field field = findField(root.getClass(), fieldName);
-            if (field == null) {
-                return null;
-            }
-            field.setAccessible(true);
-            final Object fieldValue = field.get(root);
+        return findChildRecursively(root, fieldName, identifier, new HashSet<>());
+    }
 
-            if (fieldValue instanceof Collection<?> collection) {
-                for (final Object item : collection) {
-                    final Object itemId = extractIdentifier(item);
-                    if (Objects.equals(itemId, identifier)) {
-                        return item;
+    /**
+     * 递归查找子对象
+     * <p>
+     * 在对象图中递归查找指定字段名和标识符的子对象。
+     * </p>
+     */
+    private Object findChildRecursively(Object current, String fieldName, Object identifier, Set<Object> visited) {
+        if (current == null || visited.contains(current)) {
+            return null;
+        }
+        visited.add(current);
+
+        // 1. 先在当前对象的直接字段中查找
+        try {
+            final Field field = findField(current.getClass(), fieldName);
+            if (field != null) {
+                field.setAccessible(true);
+                final Object fieldValue = field.get(current);
+
+                if (fieldValue instanceof Collection<?> collection) {
+                    for (final Object item : collection) {
+                        final Object itemId = extractIdentifier(item);
+                        if (Objects.equals(itemId, identifier)) {
+                            return item;
+                        }
                     }
                 }
             }
         } catch (IllegalAccessException e) {
             // ignore
         }
+
+        // 2. 递归查找所有集合字段中的子对象
+        for (final Field field : getAllFields(current.getClass())) {
+            try {
+                field.setAccessible(true);
+                final Object fieldValue = field.get(current);
+
+                if (fieldValue instanceof Collection<?> collection) {
+                    for (final Object item : collection) {
+                        final Object found = findChildRecursively(item, fieldName, identifier, visited);
+                        if (found != null) {
+                            return found;
+                        }
+                    }
+                }
+            } catch (IllegalAccessException e) {
+                // ignore
+            }
+        }
+
         return null;
+    }
+
+    /**
+     * 获取类的所有字段（包括父类）
+     */
+    private List<Field> getAllFields(Class<?> clazz) {
+        final List<Field> fields = new ArrayList<>();
+        Class<?> current = clazz;
+        while (current != null && current != Object.class) {
+            fields.addAll(Arrays.asList(current.getDeclaredFields()));
+            current = current.getSuperclass();
+        }
+        return fields;
     }
 
     private Field findField(Class<?> clazz, String fieldName) {

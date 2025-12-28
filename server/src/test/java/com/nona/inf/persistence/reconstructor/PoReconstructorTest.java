@@ -187,7 +187,7 @@ class PoReconstructorTest {
         final PoConverter<OrderItem, OrderItemPO> itemConverter = mock(PoConverter.class);
         when(itemConverter.toPO(item)).thenReturn(itemPO);
         when(itemConverter.poClass()).thenReturn(OrderItemPO.class);
-        when(converterRegistry.getChildConverters(Order.class)).thenReturn(Map.of("items", itemConverter));
+        when(converterRegistry.getAllConverters()).thenReturn(Map.of("items", itemConverter));
         when(changeDispatcher.dispatch(changeSet, Order.class)).thenReturn(dispatched);
 
         // When
@@ -212,7 +212,7 @@ class PoReconstructorTest {
 
         final PoConverter<OrderItem, OrderItemPO> itemConverter = mock(PoConverter.class);
         when(itemConverter.poClass()).thenReturn(OrderItemPO.class);
-        when(converterRegistry.getChildConverters(Order.class)).thenReturn(Map.of("items", itemConverter));
+        when(converterRegistry.getAllConverters()).thenReturn(Map.of("items", itemConverter));
         when(changeDispatcher.dispatch(changeSet, Order.class)).thenReturn(dispatched);
 
         // When
@@ -241,7 +241,7 @@ class PoReconstructorTest {
         final PoConverter<OrderItem, OrderItemPO> itemConverter = mock(PoConverter.class);
         when(itemConverter.toPO(item)).thenReturn(itemPO);
         when(itemConverter.poClass()).thenReturn(OrderItemPO.class);
-        when(converterRegistry.getChildConverters(Order.class)).thenReturn(Map.of("items", itemConverter));
+        when(converterRegistry.getAllConverters()).thenReturn(Map.of("items", itemConverter));
         when(changeDispatcher.dispatch(changeSet, Order.class)).thenReturn(dispatched);
 
         // When
@@ -285,7 +285,7 @@ class PoReconstructorTest {
         final PoConverter<OrderItem, OrderItemPO> itemConverter = mock(PoConverter.class);
         when(itemConverter.toPO(item)).thenReturn(itemPO);
         when(itemConverter.poClass()).thenReturn(OrderItemPO.class);
-        when(converterRegistry.getChildConverters(Order.class)).thenReturn(Map.of("items", itemConverter));
+        when(converterRegistry.getAllConverters()).thenReturn(Map.of("items", itemConverter));
         when(changeDispatcher.dispatch(changeSet, Order.class)).thenReturn(dispatched);
 
         // When
@@ -334,7 +334,7 @@ class PoReconstructorTest {
         when(itemConverter.toPO(item1)).thenReturn(itemPO1);
         when(itemConverter.toPO(item2)).thenReturn(itemPO2);
         when(itemConverter.poClass()).thenReturn(OrderItemPO.class);
-        when(converterRegistry.getChildConverters(Order.class)).thenReturn(Map.of("items", itemConverter));
+        when(converterRegistry.getAllConverters()).thenReturn(Map.of("items", itemConverter));
         when(changeDispatcher.dispatch(changeSet, Order.class)).thenReturn(dispatched);
 
         // When
@@ -359,7 +359,7 @@ class PoReconstructorTest {
 
         // 没有注册 CompositeConverter
         when(converterRegistry.getCompositeConverter(Order.class)).thenReturn(java.util.Optional.empty());
-        when(converterRegistry.getChildConverters(Order.class)).thenReturn(Map.of());
+        when(converterRegistry.getAllConverters()).thenReturn(Map.of());
         when(changeDispatcher.dispatch(changeSet, Order.class)).thenReturn(dispatched);
 
         // When
@@ -384,7 +384,7 @@ class PoReconstructorTest {
         dispatched.getOrCreateCollectionChanges("items").addAddition(new ItemAddedChange("items", addedNode));
 
         // 没有注册 items 的 converter
-        when(converterRegistry.getChildConverters(Order.class)).thenReturn(Map.of());
+        when(converterRegistry.getAllConverters()).thenReturn(Map.of());
         when(changeDispatcher.dispatch(changeSet, Order.class)).thenReturn(dispatched);
 
         // When
@@ -410,7 +410,7 @@ class PoReconstructorTest {
 
         final PoConverter<OrderItem, OrderItemPO> itemConverter = mock(PoConverter.class);
         when(itemConverter.poClass()).thenReturn(OrderItemPO.class);
-        when(converterRegistry.getChildConverters(Order.class)).thenReturn(Map.of("items", itemConverter));
+        when(converterRegistry.getAllConverters()).thenReturn(Map.of("items", itemConverter));
         when(changeDispatcher.dispatch(changeSet, Order.class)).thenReturn(dispatched);
 
         // When
@@ -440,7 +440,7 @@ class PoReconstructorTest {
         final PoConverter<Spec, SpecPO> specConverter = mock(PoConverter.class);
         when(specConverter.toPO(spec)).thenReturn(specPO);
         when(specConverter.poClass()).thenReturn(SpecPO.class);
-        when(converterRegistry.getChildConverters(Order.class)).thenReturn(Map.of("specs", specConverter));
+        when(converterRegistry.getAllConverters()).thenReturn(Map.of("specs", specConverter));
         when(changeDispatcher.dispatch(changeSet, Order.class)).thenReturn(dispatched);
 
         // When

@@ -41,9 +41,8 @@ class IdentifierExtractorBuilderTest {
 
     @Test
     void shouldExtractByDefaultField() {
-        ChangeTrackingProperties props = ChangeTrackingProperties.builder()
-                .defaultIdentifier("id")
-                .build();
+        ChangeTrackingProperties props = new ChangeTrackingProperties();
+        props.setDefaultIdentifier("id");
         IdentifierExtractorBuilder builder = new IdentifierExtractorBuilder(props);
 
         Function<Object, Object> extractor = builder.getDefaultExtractor();
@@ -54,9 +53,8 @@ class IdentifierExtractorBuilderTest {
 
     @Test
     void shouldFallbackToIdentityHashCodeWhenFieldNotFound() {
-        ChangeTrackingProperties props = ChangeTrackingProperties.builder()
-                .defaultIdentifier("nonExistentField")
-                .build();
+        ChangeTrackingProperties props = new ChangeTrackingProperties();
+        props.setDefaultIdentifier("nonExistentField");
         IdentifierExtractorBuilder builder = new IdentifierExtractorBuilder(props);
 
         Function<Object, Object> extractor = builder.getDefaultExtractor();
@@ -70,9 +68,8 @@ class IdentifierExtractorBuilderTest {
 
     @Test
     void shouldBuildExtractorFromFieldOverride() {
-        ChangeTrackingProperties props = ChangeTrackingProperties.builder()
-                .identifierOverride(TestEntityWithUuid.class.getName(), "uuid")
-                .build();
+        ChangeTrackingProperties props = new ChangeTrackingProperties();
+        props.getIdentifierOverrides().put(TestEntityWithUuid.class.getName(), "uuid");
         IdentifierExtractorBuilder builder = new IdentifierExtractorBuilder(props);
 
         Map<Class<?>, Function<Object, Object>> extractors = builder.build();
@@ -86,9 +83,8 @@ class IdentifierExtractorBuilderTest {
 
     @Test
     void shouldBuildExtractorFromMethodConfig() {
-        ChangeTrackingProperties props = ChangeTrackingProperties.builder()
-                .identifierMethod(TestEntity.class.getName(), "getName")
-                .build();
+        ChangeTrackingProperties props = new ChangeTrackingProperties();
+        props.getIdentifierMethods().put(TestEntity.class.getName(), "getName");
         IdentifierExtractorBuilder builder = new IdentifierExtractorBuilder(props);
 
         Map<Class<?>, Function<Object, Object>> extractors = builder.build();
@@ -100,10 +96,9 @@ class IdentifierExtractorBuilderTest {
 
     @Test
     void shouldMethodConfigOverrideFieldConfig() {
-        ChangeTrackingProperties props = ChangeTrackingProperties.builder()
-                .identifierOverride(TestEntity.class.getName(), "id")
-                .identifierMethod(TestEntity.class.getName(), "getName")
-                .build();
+        ChangeTrackingProperties props = new ChangeTrackingProperties();
+        props.getIdentifierOverrides().put(TestEntity.class.getName(), "id");
+        props.getIdentifierMethods().put(TestEntity.class.getName(), "getName");
         IdentifierExtractorBuilder builder = new IdentifierExtractorBuilder(props);
 
         Map<Class<?>, Function<Object, Object>> extractors = builder.build();
@@ -117,9 +112,8 @@ class IdentifierExtractorBuilderTest {
 
     @Test
     void shouldThrowWhenClassNotFound() {
-        ChangeTrackingProperties props = ChangeTrackingProperties.builder()
-                .identifierOverride("com.nonexistent.Class", "id")
-                .build();
+        ChangeTrackingProperties props = new ChangeTrackingProperties();
+        props.getIdentifierOverrides().put("com.nonexistent.Class", "id");
         IdentifierExtractorBuilder builder = new IdentifierExtractorBuilder(props);
 
         assertThrows(IllegalStateException.class, builder::build);
@@ -129,9 +123,8 @@ class IdentifierExtractorBuilderTest {
 
     @Test
     void shouldGetExtractorForRegisteredClass() {
-        ChangeTrackingProperties props = ChangeTrackingProperties.builder()
-                .identifierOverride(TestEntity.class.getName(), "name")
-                .build();
+        ChangeTrackingProperties props = new ChangeTrackingProperties();
+        props.getIdentifierOverrides().put(TestEntity.class.getName(), "name");
         IdentifierExtractorBuilder builder = new IdentifierExtractorBuilder(props);
         Map<Class<?>, Function<Object, Object>> extractors = builder.build();
 
@@ -143,9 +136,8 @@ class IdentifierExtractorBuilderTest {
 
     @Test
     void shouldFallbackToDefaultFieldForUnregisteredClass() {
-        ChangeTrackingProperties props = ChangeTrackingProperties.builder()
-                .defaultIdentifier("id")
-                .build();
+        ChangeTrackingProperties props = new ChangeTrackingProperties();
+        props.setDefaultIdentifier("id");
         IdentifierExtractorBuilder builder = new IdentifierExtractorBuilder(props);
         Map<Class<?>, Function<Object, Object>> extractors = builder.build();
 

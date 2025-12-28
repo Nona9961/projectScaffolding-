@@ -75,6 +75,44 @@ public class ConverterRegistry {
     }
 
     /**
+     * 获取所有字段名到转换器的映射（递归扫描所有已注册的领域类）
+     *
+     * @return 字段名 -> 转换器 的映射
+     */
+    public Map<String, PoConverter<?, ?>> getAllConverters() {
+        final Map<String, PoConverter<?, ?>> result = new HashMap<>();
+
+        // 扫描所有聚合根类
+        for (final CompositePoConverter<?, ?> converter : compositeConverters.values()) {
+            scanFieldsRecursively(converter.rootClass(), result);
+        }
+
+        // 扫描所有已注册的简单领域类
+        for (final PoConverter<?, ?> converter : simpleConverters.values()) {
+            scanFieldsRecursively(converter.domainClass(), result);
+        }
+
+        return result;
+    }
+
+    /**
+     * 递归扫描类的字段，建立字段名到转换器的映射
+     */
+    private void scanFieldsRecursively(Class<?> clazz, Map<String, PoConverter<?, ?>> result) {
+        for (final Field field : getAllFields(clazz)) {
+            final Class<?> elementType = extractElementType(field);
+            if (elementType != null) {
+                final PoConverter<?, ?> converter = simpleConverters.get(elementType);
+                if (converter != null) {
+                    result.put(field.getName(), converter);
+                    // 递归扫描子类
+                    scanFieldsRecursively(elementType, result);
+                }
+            }
+        }
+    }
+
+    /**
      * 自动扫描聚合根类的字段，识别子表
      */
     private Map<String, PoConverter<?, ?>> scanChildConverters(Class<?> rootClass) {

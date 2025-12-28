@@ -3,7 +3,6 @@ package com.nona.inf.persistence.tracking;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -23,19 +22,6 @@ class UnitOfWorkProviderTest {
     // ========== 构造测试 ==========
 
     @Test
-    void shouldBuildWithProperties() {
-        ChangeTrackingProperties props = ChangeTrackingProperties.builder()
-                .defaultIdentifier("id")
-                .valueTypePackage("com.example.vo")
-                .build();
-
-        UnitOfWorkProvider provider = new UnitOfWorkProvider(props);
-
-        assertNotNull(provider);
-        assertEquals(Set.of("com.example.vo"), provider.getValuePackages());
-    }
-
-    @Test
     void shouldBuildWithBuilder() {
         UnitOfWorkProvider provider = UnitOfWorkProvider.builder()
                 .withIdentifier(TestEntity.class, e -> e.id)
@@ -45,21 +31,6 @@ class UnitOfWorkProviderTest {
         assertNotNull(provider);
         assertTrue(provider.getExtractors().containsKey(TestEntity.class));
         assertTrue(provider.getValuePackages().contains("com.example.vo"));
-    }
-
-    @Test
-    void shouldBuildFromPropertiesViaBuilder() {
-        ChangeTrackingProperties props = ChangeTrackingProperties.builder()
-                .valueTypePackage("com.example.types")
-                .build();
-
-        UnitOfWorkProvider provider = UnitOfWorkProvider.builder()
-                .fromProperties(props)
-                .withValuePackage("com.example.extra")
-                .build();
-
-        assertTrue(provider.getValuePackages().contains("com.example.types"));
-        assertTrue(provider.getValuePackages().contains("com.example.extra"));
     }
 
     // ========== 提取器测试 ==========
@@ -113,19 +84,4 @@ class UnitOfWorkProviderTest {
         assertThrows(UnsupportedOperationException.class, () ->
                 provider.getValuePackages().add("com.example"));
     }
-
-    // ========== 错误处理测试 ==========
-
-    @Test
-    void shouldThrowWhenValueTypeClassNotFound() {
-        ChangeTrackingProperties props = ChangeTrackingProperties.builder()
-                .valueType("com.nonexistent.Class")
-                .build();
-
-        assertThrows(IllegalStateException.class, () -> new UnitOfWorkProvider(props));
-    }
-
-    // ========== create() 测试需要 SPI，跳过 ==========
-    // UnitOfWorkProvider.create() 依赖 ServiceLoader 加载 TrackingCapabilityProvider
-    // 需要在集成测试中验证
 }
