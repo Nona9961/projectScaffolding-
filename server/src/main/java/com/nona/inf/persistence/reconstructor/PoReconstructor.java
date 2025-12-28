@@ -145,7 +145,7 @@ public class PoReconstructor {
     private Set<Object> extractIdentifiersFromFieldChanges(List<FieldChange> fieldChanges) {
         final Set<Object> identifiers = new HashSet<>();
         for (final FieldChange fc : fieldChanges) {
-            final Matcher matcher = IDENTIFIER_PATTERN.matcher(fc.path());
+            final Matcher matcher = IDENTIFIER_PATTERN.matcher(fc.fullPath());
             if (matcher.find()) {
                 final String idStr = matcher.group(1);
                 try {
