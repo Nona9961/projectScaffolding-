@@ -18,9 +18,12 @@ import java.util.function.Function;
 @Slf4j
 public class UnitOfWorkProvider {
 
+    private static final String DEFAULT_CAPABILITY_NAME = "default-reflection";
+
     private final Map<Class<?>, Function<Object, Object>> extractors;
     private final Set<Class<?>> valueTypes;
     private final Set<String> valuePackages;
+    private final String capabilityName;
 
     /**
      * 缓存的 TrackingCapabilityProvider 类，延迟初始化
@@ -39,6 +42,7 @@ public class UnitOfWorkProvider {
         this.extractors = builder.build();
         this.valueTypes = resolveValueTypes(properties);
         this.valuePackages = new HashSet<>(properties.getValueTypePackages());
+        this.capabilityName = normalizeCapabilityName(properties.getCapability());
     }
 
     /**
@@ -52,9 +56,18 @@ public class UnitOfWorkProvider {
             Map<Class<?>, Function<Object, Object>> extractors,
             Set<Class<?>> valueTypes,
             Set<String> valuePackages) {
+        this(null, extractors, valueTypes, valuePackages);
+    }
+
+    private UnitOfWorkProvider(
+            String capabilityName,
+            Map<Class<?>, Function<Object, Object>> extractors,
+            Set<Class<?>> valueTypes,
+            Set<String> valuePackages) {
         this.extractors = new HashMap<>(Objects.requireNonNull(extractors));
         this.valueTypes = new HashSet<>(Objects.requireNonNull(valueTypes));
         this.valuePackages = new HashSet<>(Objects.requireNonNull(valuePackages));
+        this.capabilityName = normalizeCapabilityName(capabilityName);
     }
 
     /**
@@ -102,11 +115,64 @@ public class UnitOfWorkProvider {
      * @throws IllegalStateException 如果没有找到实现
      */
     private Class<? extends TrackingCapabilityProvider> discoverProviderClass() {
-        ServiceLoader<TrackingCapabilityProvider> loader = ServiceLoader.load(TrackingCapabilityProvider.class);
-        TrackingCapabilityProvider provider = loader.findFirst()
-                .orElseThrow(() -> new IllegalStateException(
-                        "No TrackingCapabilityProvider found. Ensure change-tracking-core is on the classpath."));
-        return provider.getClass();
+        final ServiceLoader<TrackingCapabilityProvider> loader = ServiceLoader.load(TrackingCapabilityProvider.class);
+        final Map<String, Class<? extends TrackingCapabilityProvider>> discovered = new HashMap<>();
+
+        for (final TrackingCapabilityProvider provider : loader) {
+            final String name = normalizeCapabilityName(provider.getName());
+            if (name == null) {
+                throw new IllegalStateException("TrackingCapabilityProvider name is blank: " + provider.getClass().getName());
+            }
+            final Class<? extends TrackingCapabilityProvider> existing = discovered.putIfAbsent(name, provider.getClass());
+            if (existing != null && !existing.equals(provider.getClass())) {
+                throw new IllegalStateException(String.format(
+                        "Multiple TrackingCapabilityProviders found with the same name '%s': %s, %s",
+                        name, existing.getName(), provider.getClass().getName()));
+            }
+        }
+
+        if (discovered.isEmpty()) {
+            throw new IllegalStateException("No TrackingCapabilityProvider found. Ensure change-tracking-core is on the classpath.");
+        }
+
+        final String selectedName = selectCapabilityName(this.capabilityName, discovered.keySet());
+        final Class<? extends TrackingCapabilityProvider> providerClass = discovered.get(selectedName);
+        if (providerClass == null) {
+            throw new IllegalStateException("Selected tracking capability not found: " + selectedName);
+        }
+        return providerClass;
+    }
+
+    private static String selectCapabilityName(final String configuredCapabilityName, final Set<String> availableNames) {
+        final String configured = normalizeCapabilityName(configuredCapabilityName);
+        if (configured != null) {
+            if (!availableNames.contains(configured)) {
+                throw new IllegalArgumentException(String.format(
+                        "Tracking capability with name '%s' not found. Available capabilities: %s",
+                        configured, availableNames.stream().sorted().toList()));
+            }
+            return configured;
+        }
+
+        if (availableNames.contains(DEFAULT_CAPABILITY_NAME)) {
+            return DEFAULT_CAPABILITY_NAME;
+        }
+
+        return availableNames.stream()
+                .sorted()
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("No tracking capabilities available."));
+    }
+
+    private static String normalizeCapabilityName(final String name) {
+        if (name == null) {
+            return null;
+        }
+        final String trimmed = name.trim();
+        if (trimmed.isBlank()) {
+            return null;
+        }
+        return trimmed;
     }
 
     /**
@@ -195,6 +261,7 @@ public class UnitOfWorkProvider {
         private final Map<Class<?>, Function<Object, Object>> extractors = new HashMap<>();
         private final Set<Class<?>> valueTypes = new HashSet<>();
         private final Set<String> valuePackages = new HashSet<>();
+        private String capabilityName;
 
         private Builder() {}
 
@@ -206,6 +273,7 @@ public class UnitOfWorkProvider {
         public Builder fromProperties(ChangeTrackingProperties properties) {
             IdentifierExtractorBuilder builder = new IdentifierExtractorBuilder(properties);
             this.extractors.putAll(builder.build());
+            this.capabilityName = normalizeCapabilityName(properties.getCapability());
             properties.getValueTypes().forEach(className -> {
                 try {
                     this.valueTypes.add(Class.forName(className));
@@ -216,6 +284,14 @@ public class UnitOfWorkProvider {
                 }
             });
             this.valuePackages.addAll(properties.getValueTypePackages());
+            return this;
+        }
+
+        /**
+         * 指定使用的追踪能力名称（SPI Provider 名称）
+         */
+        public Builder capability(final String capabilityName) {
+            this.capabilityName = normalizeCapabilityName(capabilityName);
             return this;
         }
 
@@ -247,7 +323,7 @@ public class UnitOfWorkProvider {
          * 构建提供者
          */
         public UnitOfWorkProvider build() {
-            return new UnitOfWorkProvider(extractors, valueTypes, valuePackages);
+            return new UnitOfWorkProvider(capabilityName, extractors, valueTypes, valuePackages);
         }
     }
 }
