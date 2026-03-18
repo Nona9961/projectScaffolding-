@@ -1,4 +1,4 @@
-# Project Scaffolding
+﻿# Project Scaffolding
 
 企业级 Java 后端脚手架，基于 DDD 架构，专注于解决 **DDD 领域模型与关系型数据库之间的阻抗失衡问题**。
 
@@ -107,8 +107,8 @@ change-tracking:
 | 技术 | 版本 | 用途 |
 |------|------|------|
 | Java | 21 | 虚拟线程 |
-| Spring Boot | 3.5.8 | 应用框架 |
-| Spring Data JPA | 3.5.8 | ORM |
+| Spring Boot | 4.0.3 | 应用框架 |
+| Spring Data JPA | 4.0.3 | ORM |
 | Log4j2 | 2.24.3 | 异步日志 |
 
 ## 模块结构
@@ -132,3 +132,4 @@ projectScaffolding/
 ## 许可证
 
 MIT
+
