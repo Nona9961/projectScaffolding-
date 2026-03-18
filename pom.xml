@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+﻿<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
@@ -22,7 +22,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <commons.lang3.version>3.17.0</commons.lang3.version>
         <guava.version>33.4.0-jre</guava.version>
-        <spring-boot-dependencies.version>3.5.8</spring-boot-dependencies.version>
+        <spring-boot-dependencies.version>4.0.3</spring-boot-dependencies.version>
         <mybatis-starter.version>3.0.4</mybatis-starter.version>
         <log4j2.version>2.24.3</log4j2.version>
         <tracking.version>1.0-SNAPSHOT</tracking.version>
@@ -98,3 +98,4 @@
     </build>
 
 </project>
+
