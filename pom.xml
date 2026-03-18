@@ -25,6 +25,7 @@
         <spring-boot-dependencies.version>4.0.3</spring-boot-dependencies.version>
         <mybatis-starter.version>3.0.4</mybatis-starter.version>
         <log4j2.version>2.24.3</log4j2.version>
+        <disruptor.version>3.4.4</disruptor.version>
         <tracking.version>1.0-SNAPSHOT</tracking.version>
     </properties>
     <!--
@@ -98,4 +99,6 @@
     </build>
 
 </project>
+
+
 
