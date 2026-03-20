@@ -120,68 +120,6 @@ projectScaffolding/
 └── server/     # 主应用（DDD领域模型、持久化）
 ```
 
-## 多租户（tenant_id）约定
-
-脚手架采用 **共享库表 + `tenant_id` 逻辑隔离**（ADR-001）。按数据归属分三类：
-
-| 分类 | `tenant_id` | 说明 | 示例 |
-|------|-------------|------|------|
-| **Global** | 无 | 跨租户共享的身份/元数据 | User, Credential, Tenant |
-| **Tenant-scoped** | 必须 | 租户内隔离的数据 | TenantMembership, RoleAssignment, Department |
-| **System-level** | 无 | 系统预定义且不可被租户修改 | Permission, 预置 Role(OWNER/ADMIN/MEMBER) |
-
-### PO 基类选择（BasePO vs TenantScopedBasePO）
-
-- **Global / System-level**：继承 `BasePO`（不含 `tenant_id`）
-- **Tenant-scoped**：继承 `TenantScopedBasePO`（含 `tenant_id`）
-
-### TenantContext 传播
-
-Repository 自动从 `TenantContext`（ThreadLocal）读取 `tenantID`。通常由认证中间件从 JWT 的 `tenantId` claim 提取后设置：
-
-```java
-TenantContext.setTenantID(tenantID);
-try {
-    // do business
-} finally {
-    TenantContext.clear();
-}
-```
-
-### Repository 自动注入规则（fail-closed）
-
-对继承 `TenantScopedBasePO` 的实体：
-
-- **读**：`findAll`/`findById` 自动追加 `tenant_id = 当前 tenant`；当 `tenantID` 缺失时返回空结果（fail-closed）
-- **写**：`save`/`saveAll` 自动注入 `tenantID`（当实体 `tenantID` 为空时），并默认禁止跨租户写
-
-实现位置：`@EnableJpaRepositories(repositoryBaseClass=TenantAwareJpaRepositoryImpl.class)`（见 `server/src/main/java/com/nona/ProjectApplication.java`）。
-
-> 说明：当前脚手架对 **基础 CRUD** 做了自动注入；自定义 `@Query` / 派生查询方法应在 code review 中确认 tenant 条件是否被正确限制。
-
-### `@CrossTenant`（受控放行）
-
-跨租户查询/写必须显式标注 `@CrossTenant`（或等价机制），默认路径仍走 tenant 注入。
-
-```java
-@CrossTenant
-List<RoleAssignmentPO> listAllTenants() {
-    return roleAssignmentRepo.findAll();
-}
-
-@CrossTenant
-void createForTenant(String tenantID) {
-    RoleAssignmentPO po = new RoleAssignmentPO();
-    po.setTenantID(tenantID); // 跨租户写：必须显式指定 tenantID
-    roleAssignmentRepo.save(po);
-}
-```
-
-注意事项（强约束）：
-
-- `@CrossTenant` 仅用于平台级后台/运维/迁移等场景
-- 每次新增 `@CrossTenant` 必须 code review 强审，避免数据泄露
-
 ## 项目状态
 
 **已完成**
