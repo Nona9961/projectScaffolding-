@@ -21,6 +21,20 @@ public class ThreadContext {
     private Map<Long, Object> snapshots = new ConcurrentHashMap<>(8);   // 假设每条线程最多有6个快照，8 * 0。75 = 6
     private Map<String, Object> attributes = new ConcurrentHashMap<>(4);  // 通用属性存储（如 UnitOfWork）
 
+    public String getTenantID() {
+        final String tenantID = TenantContext.getTenantID();
+        return tenantID != null ? tenantID : this.tenantID;
+    }
+
+    public void setTenantID(String tenantID) {
+        this.tenantID = tenantID;
+        if (tenantID == null || tenantID.isBlank()) {
+            TenantContext.clear();
+            return;
+        }
+        TenantContext.setTenantID(tenantID);
+    }
+
     public void saveSnapshot(Long id, Object root) {
         snapshots.put(id, root);
     }

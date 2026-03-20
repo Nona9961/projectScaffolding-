@@ -6,7 +6,7 @@ import com.nona.changeTracking.internal.capability.DefaultTrackingCapabilityProv
 import com.nona.inf.persistence.converters.CompositePoConverter;
 import com.nona.inf.persistence.converters.ConverterRegistry;
 import com.nona.inf.persistence.converters.PoConverter;
-import com.nona.inf.persistence.po.BasePO;
+import com.nona.inf.persistence.po.TenantScopedBasePO;
 import org.junit.jupiter.api.*;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
@@ -308,7 +308,7 @@ class FullIntegrationTest {
 
     // ==================== 持久化对象 (PO) ====================
 
-    static class OrderPO extends BasePO {
+    static class OrderPO extends TenantScopedBasePO {
         private String orderNo;
         private String status;
         private BigDecimal totalAmount;
