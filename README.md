@@ -102,6 +102,43 @@ change-tracking:
 方法配置 > 字段覆盖 > 默认字段
 ```
 
+## 多租户（Multi-tenancy）
+
+### 数据分类（Global vs Tenant-scoped）
+
+| 类型 | tenant_id | 说明 | 示例 |
+|------|-----------|------|------|
+| Global / System-level | 无 | 跨租户共享的身份/元数据 | User, Credential, Tenant |
+| Tenant-scoped | 必须 | 租户内隔离的数据 | Order, Department, RoleAssignment |
+
+### PO 基类选择（BasePO vs TenantScopedBasePO）
+
+- **Global / System-level**：继承 `BasePO`（不含 `tenant_id`）
+- **Tenant-scoped**：继承 `TenantScopedBasePO`（含 `tenant_id` + `@TenantId`）
+
+### 运行时规则（fail-closed）
+
+- tenantID 来源：`ThreadContext.tenantID`
+- Hibernate 通过 `CurrentTenantIdentifierResolver`（`ThreadContextTenantIdentifierResolver`）读取 tenantID 并注入隔离条件
+- 当 tenantID 缺失时，返回 `__MISSING_TENANT__` 以实现 fail-closed（tenant-scoped 查询默认返回空）
+- tenant-scoped 写入在 tenant 缺失时会直接失败（见 `TenantRepositoryAspect`）
+
+### `@CrossTenant`（受控放行）
+
+跨租户查询/写必须显式标注 `@CrossTenant`（或等价机制），默认路径仍走 tenant 隔离。
+
+```java
+@CrossTenant
+public List<OrderPO> listAllTenantsOrders() {
+    return orderJpaRepository.findAll();
+}
+```
+
+注意事项：
+- `@CrossTenant` 仅用于平台级后台/运维/迁移等场景
+- cross-tenant 写入必须显式指定 `tenant_id`
+- 每次新增 `@CrossTenant` 必须 code review 强审，避免数据泄露
+
 ## 技术栈
 
 | 技术 | 版本 | 用途 |
