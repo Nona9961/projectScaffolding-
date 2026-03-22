@@ -22,6 +22,11 @@ public class ThreadContextTenantIdentifierResolver implements CurrentTenantIdent
 
     private final TenantContextAccessor tenantContextAccessor;
 
+    /**
+     * 为 Hibernate 解析当前会话的 tenant identifier。
+     *
+     * @return 当前 tenant identifier；cross-tenant 时返回 {@link #ROOT_TENANT_ID}，tenant 缺失时返回 {@link TenantContextAccessor#MISSING_TENANT_ID}
+     */
     @Override
     public String resolveCurrentTenantIdentifier() {
         if (tenantContextAccessor.isCrossTenant()) {
@@ -30,14 +35,24 @@ public class ThreadContextTenantIdentifierResolver implements CurrentTenantIdent
         return tenantContextAccessor.getTenantIDOrMissing();
     }
 
+    /**
+     * 是否校验已存在的 Session。
+     *
+     * @return 固定返回 false（不做校验）
+     */
     @Override
     public boolean validateExistingCurrentSessions() {
         return false;
     }
 
+    /**
+     * 判断指定 tenant 是否为 root tenant（用于绕过 discriminator 过滤）。
+     *
+     * @param tenantId tenant identifier
+     * @return 是否为 root tenant
+     */
     @Override
     public boolean isRoot(String tenantId) {
         return ROOT_TENANT_ID.equals(tenantId);
     }
 }
-
