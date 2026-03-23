@@ -102,6 +102,13 @@ change-tracking:
 方法配置 > 字段覆盖 > 默认字段
 ```
 
+## 可观测性基线（Actuator）
+
+- 脚手架默认集成 `spring-boot-starter-actuator`。
+- 默认仅通过 management web exposure 暴露 `health` 和 `info` 两个端点。
+- 本脚手架不会在默认配置中额外暴露 `env`、`metrics`、`prometheus` 等其它 management 端点。
+- Actuator 端点是否可被访问、如何鉴权与授权，仍由具体项目自行配置；当前脚手架不内置放行规则或独立安全策略。
+
 ## 多租户（Multi-tenancy）
 
 ### 数据分类（Global vs Tenant-scoped）

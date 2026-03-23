@@ -8,3 +8,9 @@ spring:
 
 logging:
   config: classpath:log_config.xml
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
