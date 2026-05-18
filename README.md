@@ -146,6 +146,34 @@ public List<OrderPO> listAllTenantsOrders() {
 - cross-tenant 写入必须显式指定 `tenant_id`
 - 每次新增 `@CrossTenant` 必须 code review 强审，避免数据泄露
 
+### 脚手架标识（`@ScaffoldGenerated`）
+
+所有模板生成的文件均标注 `@ScaffoldGenerated` 注解（`@Target(TYPE)`，`@Retention(SOURCE)`），位于 `common` 模块。
+
+```java
+@ScaffoldGenerated
+public class TenantContextAccessor { ... }
+```
+
+- **不参与编译产物**：`SOURCE` 保留策略，javac 编译后丢弃，零运行时开销
+- **区分模板 vs 手写**：一眼判断文件来源，Bug 修复时知道往脚手架提 issue 还是项目内改
+- **下游项目**：生成后保留注解；手写文件不加注解即可自动区分
+
+### 异步上下文传播（`RequestContextPropagatingTaskDecorator`）
+
+异步线程池中 `@RequestScope` 的 `ThreadContext`（tenantID / role / identity）会丢失。
+
+`RequestContextPropagatingTaskDecorator` 在任务提交时快照 ThreadContext，worker 线程通过 `TenantContextAccessor` 的 ThreadLocal fallback 恢复：
+
+```java
+ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+executor.setTaskDecorator(new RequestContextPropagatingTaskDecorator(tenantContextAccessor));
+executor.initialize();
+```
+
+- **不自动注册**：下游项目手动绑定到各自的 `ThreadPoolTaskExecutor`
+- **不传播事务/连接**：只传播 RequestContext，事务边界由下游自行管理
+
 ## 技术栈
 
 | 技术 | 版本 | 用途 |
