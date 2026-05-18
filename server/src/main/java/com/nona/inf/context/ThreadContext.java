@@ -5,8 +5,10 @@ import lombok.Data;
 import org.springframework.stereotype.Component;
 import org.springframework.web.context.annotation.RequestScope;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * 由Spring管理的线程上下文，可以理解为一个ThreadLocal。 在bean中注入该类其实是一个proxy，每个线程之间是隔离的，和注入HttpServletRequest类似。
@@ -16,10 +18,13 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequestScope
 @Component
 @Data
+@ScaffoldGenerated
 public class ThreadContext {
     private String tenantID;
-    private Map<Long, Object> snapshots = new ConcurrentHashMap<>(8);   // 假设每条线程最多有6个快照，8 * 0。75 = 6
-    private Map<String, Object> attributes = new ConcurrentHashMap<>(4);  // 通用属性存储（如 UnitOfWork）
+    private List<String> role;
+    private String identity;
+    private Map<Long, Object> snapshots = new ConcurrentHashMap<>(8);
+    private Map<String, Object> attributes = new ConcurrentHashMap<>(4);
 
     public void saveSnapshot(Long id, Object root) {
         snapshots.put(id, root);

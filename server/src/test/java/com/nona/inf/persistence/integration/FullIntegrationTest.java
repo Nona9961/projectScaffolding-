@@ -18,6 +18,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * ==================== 复杂领域模型（4层嵌套） ====================
@@ -62,6 +63,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @see com.nona.inf.persistence.repository.DifferRepository
  * @see OrderRepository
  */
+@ScaffoldGenerated
 class FullIntegrationTest {
 
     private JdbcTemplate jdbc;

@@ -6,6 +6,7 @@ import com.nona.inf.persistence.converters.PoConverter;
 import lombok.RequiredArgsConstructor;
 
 import java.util.Map;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * 变更分发器
@@ -15,6 +16,7 @@ import java.util.Map;
  * 利用 {@link ChangeSet#getLeafChanges()} 和 {@link Change#collectionFieldName()} 进行分类。
  */
 @RequiredArgsConstructor
+@ScaffoldGenerated
 public class ChangeDispatcher {
 
     private final ConverterRegistry converterRegistry;

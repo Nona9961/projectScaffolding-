@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.*;
 import java.util.function.Function;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * UnitOfWork 提供者
@@ -16,6 +17,7 @@ import java.util.function.Function;
  * 该类封装了 change-tracking 库的配置细节，对外提供简单的工厂方法。
  */
 @Slf4j
+@ScaffoldGenerated
 public class UnitOfWorkProvider {
 
     private static final String DEFAULT_CAPABILITY_NAME = "default-reflection";
@@ -78,7 +80,6 @@ public class UnitOfWorkProvider {
      * @return 配置好的 UnitOfWork 实例
      */
     public UnitOfWork create() {
-        // 延迟初始化 providerClass
         if (providerClass == null) {
             synchronized (this) {
                 if (providerClass == null) {
@@ -87,21 +88,17 @@ public class UnitOfWorkProvider {
             }
         }
 
-        // 使用缓存的 provider 类创建新实例
-        TrackingCapabilityProvider provider = createProviderInstance();
+        final TrackingCapabilityProvider provider = createProviderInstance();
 
-        // 注册所有标识符提取器
-        for (Map.Entry<Class<?>, Function<Object, Object>> entry : extractors.entrySet()) {
+        for (final Map.Entry<Class<?>, Function<Object, Object>> entry : extractors.entrySet()) {
             registerIdentifier(provider, entry.getKey(), entry.getValue());
         }
 
-        // 注册值类型
-        for (Class<?> valueType : valueTypes) {
+        for (final Class<?> valueType : valueTypes) {
             provider.withValueType(valueType);
         }
 
-        // 注册值类型包
-        for (String packageName : valuePackages) {
+        for (final String packageName : valuePackages) {
             provider.withValuePackage(packageName);
         }
 

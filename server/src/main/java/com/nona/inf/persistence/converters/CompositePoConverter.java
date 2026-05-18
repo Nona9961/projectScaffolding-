@@ -4,6 +4,7 @@ import com.nona.inf.persistence.po.BasePO;
 
 import java.util.Collections;
 import java.util.Map;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * 组合转换器（聚合根，支持子表）
@@ -13,6 +14,7 @@ import java.util.Map;
  * @param <Root>   聚合根类型
  * @param <MainPO> 主表 PO 类型
  */
+@ScaffoldGenerated
 public interface CompositePoConverter<Root, MainPO extends BasePO> {
 
     /**

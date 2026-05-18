@@ -1,6 +1,7 @@
 package com.nona.inf.persistence.reconstructor;
 
 import java.util.Objects;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * 删除信息（PO 类型 + 主键）
@@ -10,6 +11,7 @@ import java.util.Objects;
  *
  * @author nona
  */
+@ScaffoldGenerated
 public record DeletionInfo(Class<?> poClass, Long id) {
 
     public DeletionInfo {

@@ -6,12 +6,14 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * 分发器的默认实现
  *
  * @author nona
  */
+@ScaffoldGenerated
 public class DefaultDispatcher implements Dispatcher {
 
     private final Map<String, EventHandler<?, ?>> handlers = new LinkedHashMap<>();

@@ -7,6 +7,7 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * 转换器注册中心
@@ -19,6 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *     <li>手动声明覆盖自动扫描</li>
  * </ul>
  */
+@ScaffoldGenerated
 public class ConverterRegistry {
 
     private final Map<Class<?>, PoConverter<?, ?>> simpleConverters = new ConcurrentHashMap<>();
@@ -62,11 +64,9 @@ public class ConverterRegistry {
      * @return 属性路径 -> 转换器 的映射
      */
     public Map<String, PoConverter<?, ?>> getChildConverters(Class<?> rootClass) {
-        // 1. 自动扫描
-        Map<String, PoConverter<?, ?>> result = scanChildConverters(rootClass);
+        final Map<String, PoConverter<?, ?>> result = scanChildConverters(rootClass);
 
-        // 2. 合并手动声明（覆盖 + 新增）
-        CompositePoConverter<?, ?> converter = compositeConverters.get(rootClass);
+        final CompositePoConverter<?, ?> converter = compositeConverters.get(rootClass);
         if (converter != null) {
             result.putAll(converter.declareChildConverters());
         }
@@ -82,12 +82,10 @@ public class ConverterRegistry {
     public Map<String, PoConverter<?, ?>> getAllConverters() {
         final Map<String, PoConverter<?, ?>> result = new HashMap<>();
 
-        // 扫描所有聚合根类
         for (final CompositePoConverter<?, ?> converter : compositeConverters.values()) {
             scanFieldsRecursively(converter.rootClass(), result);
         }
 
-        // 扫描所有已注册的简单领域类
         for (final PoConverter<?, ?> converter : simpleConverters.values()) {
             scanFieldsRecursively(converter.domainClass(), result);
         }
@@ -105,7 +103,6 @@ public class ConverterRegistry {
                 final PoConverter<?, ?> converter = simpleConverters.get(elementType);
                 if (converter != null) {
                     result.put(field.getName(), converter);
-                    // 递归扫描子类
                     scanFieldsRecursively(elementType, result);
                 }
             }
@@ -116,11 +113,11 @@ public class ConverterRegistry {
      * 自动扫描聚合根类的字段，识别子表
      */
     private Map<String, PoConverter<?, ?>> scanChildConverters(Class<?> rootClass) {
-        Map<String, PoConverter<?, ?>> result = new HashMap<>();
-        for (Field field : getAllFields(rootClass)) {
-            Class<?> elementType = extractElementType(field);
+        final Map<String, PoConverter<?, ?>> result = new HashMap<>();
+        for (final Field field : getAllFields(rootClass)) {
+            final Class<?> elementType = extractElementType(field);
             if (elementType != null) {
-                PoConverter<?, ?> converter = simpleConverters.get(elementType);
+                final PoConverter<?, ?> converter = simpleConverters.get(elementType);
                 if (converter != null) {
                     result.put(field.getName(), converter);
                 }
@@ -133,7 +130,7 @@ public class ConverterRegistry {
      * 获取类的所有字段（包括父类）
      */
     private List<Field> getAllFields(Class<?> clazz) {
-        List<Field> fields = new ArrayList<>();
+        final List<Field> fields = new ArrayList<>();
         Class<?> current = clazz;
         while (current != null && current != Object.class) {
             fields.addAll(Arrays.asList(current.getDeclaredFields()));
@@ -151,19 +148,17 @@ public class ConverterRegistry {
     private Class<?> extractElementType(Field field) {
         Class<?> fieldType = field.getType();
 
-        // 集合类型：提取泛型参数
         if (Collection.class.isAssignableFrom(fieldType)) {
-            Type genericType = field.getGenericType();
+            final Type genericType = field.getGenericType();
             if (genericType instanceof ParameterizedType pt) {
                 Type[] args = pt.getActualTypeArguments();
                 if (args.length > 0 && args[0] instanceof Class<?> clazz) {
                     return clazz;
                 }
             }
-            return null;  // 泛型擦除，无法识别
+            return null;
         }
 
-        // 非集合类型：直接返回字段类型
         return fieldType;
     }
 }

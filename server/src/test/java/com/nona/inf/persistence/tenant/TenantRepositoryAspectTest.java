@@ -19,8 +19,10 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import com.nona.annotation.ScaffoldGenerated;
 
 @SpringBootTest(classes = ProjectApplication.class)
+@ScaffoldGenerated
 class TenantRepositoryAspectTest {
 
     @Autowired
@@ -350,10 +352,10 @@ class TenantRepositoryAspectTest {
     }
 
     /**
-     * 验证 @CrossTenant 允许跨租户写（显式提供 entity tenantID）。
+     * 验证 @CrossTenant 允许跨租户写（显式提供 entity tenantID，保留原值）。
      */
     @Test
-    void crossTenantWriteShouldBeAllowedWhenExplicitlyEnabled() {
+    void crossTenantWriteShouldKeepExplicitTenantID() {
         threadContext.setTenantID("t1");
         crossTenantTestService.saveNoteForTenant("t2", 100L, "note-t2");
 
@@ -362,12 +364,25 @@ class TenantRepositoryAspectTest {
     }
 
     /**
-     * 验证 @CrossTenant 下仍必须显式指定 entity tenantID，否则写入拒绝。
+     * 验证 @CrossTenant + entity tenantID 缺失 → 注入当前 tenant（admin 普通创建场景）。
      */
     @Test
-    void crossTenantWriteShouldRequireExplicitTenantID() {
+    void crossTenantWriteShouldInjectCurrentTenantWhenEntityTenantMissing() {
         threadContext.setTenantID("t1");
-        assertThrows(BusinessException.class, () -> crossTenantTestService.saveNoteWithoutTenantID(71L, "illegal"));
+        crossTenantTestService.saveNoteWithoutTenantID(71L, "note-from-admin");
+
+        threadContext.setTenantID("t1");
+        assertThat(tenantNoteRepository.findAll()).hasSize(1);
+        assertThat(tenantNoteRepository.findAll().get(0).getContent()).isEqualTo("note-from-admin");
+    }
+
+    /**
+     * 验证 @CrossTenant + 当前 tenant 缺失 → 写入拒绝（fail-closed）。
+     */
+    @Test
+    void crossTenantWriteShouldFailWhenCurrentTenantMissing() {
+        threadContext.setTenantID(null);
+        assertThrows(BusinessException.class, () -> crossTenantTestService.saveNoteForTenant("t2", 81L, "note-t2"));
         assertThat(crossTenantTestService.listAllNotes()).isEmpty();
     }
 }

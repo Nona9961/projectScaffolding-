@@ -4,10 +4,12 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * @author nona
  */
+@ScaffoldGenerated
 public abstract class AbstractHandler<E, R> implements EventHandler<E, R> {
 
     private static final Executor executor = buildVirtualExecutor();
@@ -21,7 +23,6 @@ public abstract class AbstractHandler<E, R> implements EventHandler<E, R> {
 
     @Override
     public CompletableFuture<R> handleAsync(Event<E> event) {
-        // 使用executor异步执行handle方法
         return CompletableFuture.supplyAsync(() -> handle(event), executor);
     }
 }

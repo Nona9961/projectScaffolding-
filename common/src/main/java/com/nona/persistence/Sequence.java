@@ -9,6 +9,7 @@ import java.net.NetworkInterface;
 import java.util.Enumeration;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.regex.Pattern;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * 基于Twitter的Snowflake算法实现分布式高效有序ID生产黑科技(sequence)——升级版Snowflake
@@ -47,6 +48,7 @@ import java.util.regex.Pattern;
  * @author lry
  * @version 3.0
  */
+@ScaffoldGenerated
 public class Sequence {
 
     private static final Logger log = LoggerFactory.getLogger(Sequence.class);
@@ -133,7 +135,7 @@ public class Sequence {
     protected long getDatacenterId() {
         long id = 0L;
         try {
-            NetworkInterface network = NetworkInterface.getByInetAddress(getLocalAddress());
+            final NetworkInterface network = NetworkInterface.getByInetAddress(getLocalAddress());
             if (null == network) {
                 id = 1L;
             } else {
@@ -158,13 +160,11 @@ public class Sequence {
     protected long getMaxWorkerId(long datacenterId) {
         StringBuilder mpId = new StringBuilder();
         mpId.append(datacenterId);
-        String name = ManagementFactory.getRuntimeMXBean().getName();
+        final String name = ManagementFactory.getRuntimeMXBean().getName();
         if (name != null && !name.isEmpty()) {
-            // GET jvmPid
             mpId.append(name.split("@")[0]);
         }
 
-        // MAC + PID 的 hashcode 获取16个低位
         return (mpId.toString().hashCode() & 0xffff) % (maxWorkerId + 1);
     }
 
@@ -175,12 +175,10 @@ public class Sequence {
      */
     public synchronized long nextId() {
         long timestamp = timeGen();
-        // 闰秒
         if (timestamp < lastTimestamp) {
             long offset = lastTimestamp - timestamp;
             if (offset <= 5) {
                 try {
-                    // 休眠双倍差值后重新获取，再次校验
                     wait(offset << 1);
                     timestamp = timeGen();
                     if (timestamp < lastTimestamp) {
@@ -195,20 +193,16 @@ public class Sequence {
         }
 
         if (lastTimestamp == timestamp) {
-            // 相同毫秒内，序列号自增
             sequence = (sequence + 1) & sequenceMask;
             if (sequence == 0) {
-                // 同一毫秒的序列数已经达到最大
                 timestamp = tilNextMillis(lastTimestamp);
             }
         } else {
-            // 不同毫秒内，序列号置为 1 - 3 随机数
             sequence = ThreadLocalRandom.current().nextLong(1, 3);
         }
 
         lastTimestamp = timestamp;
 
-        // 时间戳部分 | 数据中心部分 | 机器标识部分 | 序列号部分
         return ((timestamp - twepoch) << timestampLeftShift)
                 | (datacenterId << datacenterIdShift)
                 | (workerId << workerIdShift)
@@ -286,7 +280,7 @@ public class Sequence {
             return false;
         }
 
-        String name = address.getHostAddress();
+        final String name = address.getHostAddress();
         return (name != null && !"0.0.0.0".equals(name) && !"127.0.0.1".equals(name) && IP_PATTERN.matcher(name).matches());
     }
 

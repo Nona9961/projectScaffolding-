@@ -3,10 +3,12 @@ package com.nona.inf.persistence.tracking;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * UnitOfWork自动配置测试
  */
+@ScaffoldGenerated
 class UnitOfWorkAutoConfigurationTest {
 
     /**

@@ -1,6 +1,7 @@
 package com.nona.events;
 
 import java.time.Instant;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * 事件
@@ -8,6 +9,7 @@ import java.time.Instant;
  * @param <E> 事件携带的数据
  * @author nona
  */
+@ScaffoldGenerated
 public interface Event<E> {
     /**
      * 拿去事件数据

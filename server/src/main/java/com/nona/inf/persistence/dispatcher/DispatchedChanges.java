@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * 分发后的变更数据结构
@@ -20,6 +21,7 @@ import java.util.Map;
  * </ul>
  */
 @Getter
+@ScaffoldGenerated
 public class DispatchedChanges {
 
     /**

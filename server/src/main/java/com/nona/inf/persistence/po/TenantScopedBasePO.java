@@ -5,6 +5,7 @@ import jakarta.persistence.Entity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.hibernate.annotations.TenantId;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * Tenant-scoped 的 rdb po 基类
@@ -14,6 +15,7 @@ import org.hibernate.annotations.TenantId;
 @Data
 @EqualsAndHashCode(callSuper = true)
 @Entity
+@ScaffoldGenerated
 public abstract class TenantScopedBasePO extends BasePO {
 
     @Column(nullable = false, length = 64, name = "tenant_id")

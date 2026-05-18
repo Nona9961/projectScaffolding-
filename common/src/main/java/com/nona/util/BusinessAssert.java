@@ -6,12 +6,14 @@ import org.apache.commons.lang3.ArrayUtils;
 import org.slf4j.helpers.MessageFormatter;
 
 import java.util.Objects;
+import com.nona.annotation.ScaffoldGenerated;
 
 
 /**
  * 常用校验并抛出业务异常的工具类
  */
 @Slf4j
+@ScaffoldGenerated
 public class BusinessAssert {
     private BusinessAssert() throws IllegalAccessException {
         throw new IllegalAccessException();

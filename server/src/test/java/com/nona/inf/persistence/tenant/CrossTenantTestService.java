@@ -7,8 +7,10 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import com.nona.annotation.ScaffoldGenerated;
 
 @Service
+@ScaffoldGenerated
 class CrossTenantTestService {
 
     private final TestTenantNoteRepository tenantNoteRepository;

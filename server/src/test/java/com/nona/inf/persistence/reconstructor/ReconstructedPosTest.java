@@ -6,11 +6,13 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * ReconstructedPos 单元测试
  */
 @DisplayName("ReconstructedPos 测试")
+@ScaffoldGenerated
 class ReconstructedPosTest {
 
     static class OrderPO {

@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.util.Map;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * Hibernate 多租户配置：注册 {@link ThreadContextTenantIdentifierResolver} 到 Hibernate 属性中。
@@ -15,6 +16,7 @@ import java.util.Map;
  */
 @Configuration
 @RequiredArgsConstructor
+@ScaffoldGenerated
 public class HibernateMultiTenancyConfig {
 
     private final ThreadContextTenantIdentifierResolver tenantIdentifierResolver;

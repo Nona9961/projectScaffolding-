@@ -12,12 +12,14 @@ import org.springframework.data.repository.ListCrudRepository;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.*;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * Order 聚合根的仓储实现
  * <p>
  * 继承 DifferRepository，实现完整的变更追踪和持久化
  */
+@ScaffoldGenerated
 class OrderRepository extends DifferRepository<FullIntegrationTest.Order, FullIntegrationTest.OrderPO, Map<String, Object>> {
 
     private final JdbcTemplate jdbc;

@@ -14,6 +14,7 @@ import org.springframework.data.repository.ListCrudRepository;
 
 import java.util.Objects;
 import java.util.Optional;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * 支持基于diff的仓储，集成 UnitOfWork 实现变更追踪
@@ -24,6 +25,7 @@ import java.util.Optional;
  * @see RdbGeneralConvertor
  */
 @RequiredArgsConstructor
+@ScaffoldGenerated
 public abstract class DifferRepository<Root, PO extends BasePO, Other> implements BaseRepository<Long, Root> {
 
     private static final String UOW_KEY = "UNIT_OF_WORK";
@@ -47,7 +49,6 @@ public abstract class DifferRepository<Root, PO extends BasePO, Other> implement
             return null;
         }
 
-        // 注册到 UnitOfWork 进行追踪
         getOrCreateUnitOfWork().registerClean(root);
         threadContext.saveSnapshot(id, root);
         return root;
@@ -97,23 +98,19 @@ public abstract class DifferRepository<Root, PO extends BasePO, Other> implement
         final UnitOfWork uow = getOrCreateUnitOfWork();
 
         if (!isTracked(id)) {
-            // 新增：子类自由实现持久化策略
             doInsert(root);
             uow.registerClean(root);
             threadContext.saveSnapshot(id, root);
             return true;
         }
 
-        // 计算变更
         final ChangeSet changeSet = uow.calculateChanges();
         if (changeSet.isEmpty()) {
             return false;
         }
 
-        // 应用变更：子类自由实现持久化策略
         doUpdate(root, changeSet);
 
-        // 重新注册快照
         uow.registerClean(root);
         threadContext.saveSnapshot(id, root);
         return true;
@@ -142,8 +139,9 @@ public abstract class DifferRepository<Root, PO extends BasePO, Other> implement
     protected UnitOfWork getOrCreateUnitOfWork() {
         UnitOfWork uow = threadContext.getAttribute(UOW_KEY);
         if (uow == null) {
-            uow = unitOfWorkProvider.create();
-            threadContext.setAttribute(UOW_KEY, uow);
+            final UnitOfWork newUow = unitOfWorkProvider.create();
+            uow = newUow;
+            threadContext.setAttribute(UOW_KEY, newUow);
         }
         return uow;
     }

@@ -3,10 +3,12 @@ package com.nona.inf.persistence.tracking;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * ChangeTrackingProperties 单元测试
  */
+@ScaffoldGenerated
 class ChangeTrackingPropertiesTest {
 
     @Test

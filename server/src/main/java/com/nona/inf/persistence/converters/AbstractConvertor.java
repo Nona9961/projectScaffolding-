@@ -5,6 +5,7 @@ import jakarta.annotation.Nullable;
 
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * fixme 使用反射有点依赖于用户的使用习惯，应该提供明确注册机制
@@ -28,6 +29,7 @@ import java.lang.reflect.Type;
  * @param <Other> 转换过程需要的其他辅助参数类型
  * @author nona
  */
+@ScaffoldGenerated
 public abstract class AbstractConvertor<Root, PO, Other> implements RdbGeneralConvertor<Root, PO, Other> {
 
     protected volatile Class<Root> rootClassCache;

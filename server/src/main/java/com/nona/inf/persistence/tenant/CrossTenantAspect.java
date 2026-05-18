@@ -9,6 +9,7 @@ import org.aspectj.lang.annotation.Aspect;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * 为 {@link CrossTenant} 提供基于 Spring AOP 的拦截器：
@@ -20,6 +21,7 @@ import org.springframework.stereotype.Component;
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @RequiredArgsConstructor
+@ScaffoldGenerated
 public class CrossTenantAspect {
 
     private final TenantContextAccessor tenantContextAccessor;

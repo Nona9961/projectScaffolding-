@@ -4,9 +4,11 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.*;
+import com.nona.annotation.ScaffoldGenerated;
 
 @Data
 @ConfigurationProperties(prefix = "change-tracking")
+@ScaffoldGenerated
 public class ChangeTrackingProperties {
 
     /**

@@ -3,6 +3,7 @@ package com.nona.inf.persistence.tenant;
 import com.nona.inf.persistence.po.TenantScopedBasePO;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * 租户隔离测试用的 tenant-scoped note PO。
@@ -11,6 +12,7 @@ import jakarta.persistence.Table;
  */
 @Entity
 @Table(name = "test_tenant_note")
+@ScaffoldGenerated
 public class TestTenantNotePO extends TenantScopedBasePO {
 
     private String content;

@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * 标识符提取器构建器
@@ -21,6 +22,7 @@ import java.util.function.Function;
  * </ul>
  */
 @Slf4j
+@ScaffoldGenerated
 public class IdentifierExtractorBuilder {
 
     private final ChangeTrackingProperties properties;
@@ -44,21 +46,18 @@ public class IdentifierExtractorBuilder {
      * @return 类型到提取器的映射
      */
     public Map<Class<?>, Function<Object, Object>> build() {
-        Map<Class<?>, Function<Object, Object>> extractors = new HashMap<>();
+        final Map<Class<?>, Function<Object, Object>> extractors = new HashMap<>();
 
-        // 1. 处理方法配置（优先级最高）
-        for (Map.Entry<String, String> entry : properties.getIdentifierMethods().entrySet()) {
-            Class<?> clazz = loadClassOrThrow(entry.getKey(), "identifier method");
-            Function<Object, Object> extractor = createMethodExtractor(clazz, entry.getValue());
+        for (final Map.Entry<String, String> entry : properties.getIdentifierMethods().entrySet()) {
+            final Class<?> clazz = loadClassOrThrow(entry.getKey(), "identifier method");
+            final Function<Object, Object> extractor = createMethodExtractor(clazz, entry.getValue());
             extractors.put(clazz, extractor);
         }
 
-        // 2. 处理字段覆盖配置
-        for (Map.Entry<String, String> entry : properties.getIdentifierOverrides().entrySet()) {
-            Class<?> clazz = loadClassOrThrow(entry.getKey(), "identifier override");
-            // 如果已经有方法配置，则跳过
+        for (final Map.Entry<String, String> entry : properties.getIdentifierOverrides().entrySet()) {
+            final Class<?> clazz = loadClassOrThrow(entry.getKey(), "identifier override");
             if (!extractors.containsKey(clazz)) {
-                Function<Object, Object> extractor = createFieldExtractor(clazz, entry.getValue());
+                final Function<Object, Object> extractor = createFieldExtractor(clazz, entry.getValue());
                 extractors.put(clazz, extractor);
             }
         }
@@ -74,19 +73,18 @@ public class IdentifierExtractorBuilder {
      * @return 默认提取器函数
      */
     public Function<Object, Object> getDefaultExtractor() {
-        String defaultFieldName = properties.getDefaultIdentifier();
+        final String defaultFieldName = properties.getDefaultIdentifier();
         return obj -> {
             if (obj == null) {
                 return null;
             }
             try {
-                Field field = findField(obj.getClass(), defaultFieldName);
+                final Field field = findField(obj.getClass(), defaultFieldName);
                 if (field != null) {
                     field.setAccessible(true);
                     return field.get(obj);
                 }
             } catch (Exception e) {
-                // 回退到 identityHashCode
             }
             return System.identityHashCode(obj);
         };
@@ -104,26 +102,22 @@ public class IdentifierExtractorBuilder {
     public Function<Object, Object> getExtractorFor(
             Map<Class<?>, Function<Object, Object>> extractors,
             Class<?> clazz) {
-        // 1. 检查精确匹配
         if (extractors.containsKey(clazz)) {
             return extractors.get(clazz);
         }
 
-        // 2. 检查父类/接口
-        for (Map.Entry<Class<?>, Function<Object, Object>> entry : extractors.entrySet()) {
+        for (final Map.Entry<Class<?>, Function<Object, Object>> entry : extractors.entrySet()) {
             if (entry.getKey().isAssignableFrom(clazz)) {
                 return entry.getValue();
             }
         }
 
-        // 3. 尝试使用默认字段
-        String defaultFieldName = properties.getDefaultIdentifier();
-        Field field = findField(clazz, defaultFieldName);
+        final String defaultFieldName = properties.getDefaultIdentifier();
+        final Field field = findField(clazz, defaultFieldName);
         if (field != null) {
             return createFieldExtractor(clazz, defaultFieldName);
         }
 
-        // 4. 回退到 identityHashCode
         return System::identityHashCode;
     }
 
@@ -136,7 +130,7 @@ public class IdentifierExtractorBuilder {
                 return null;
             }
             try {
-                Field field = findField(obj.getClass(), fieldName);
+                final Field field = findField(obj.getClass(), fieldName);
                 if (field == null) {
                     throw new IllegalStateException(
                             "Field '" + fieldName + "' not found in " + obj.getClass().getName());
@@ -158,7 +152,7 @@ public class IdentifierExtractorBuilder {
                 return null;
             }
             try {
-                Method method = findMethod(obj.getClass(), methodName);
+                final Method method = findMethod(obj.getClass(), methodName);
                 if (method == null) {
                     throw new IllegalStateException(
                             "Method '" + methodName + "' not found in " + obj.getClass().getName());

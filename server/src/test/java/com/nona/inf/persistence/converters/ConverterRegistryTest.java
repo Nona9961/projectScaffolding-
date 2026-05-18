@@ -9,10 +9,12 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * ConverterRegistry 单元测试
  */
+@ScaffoldGenerated
 class ConverterRegistryTest {
 
     private ConverterRegistry registry;

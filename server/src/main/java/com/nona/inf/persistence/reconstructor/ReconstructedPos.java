@@ -1,12 +1,14 @@
 package com.nona.inf.persistence.reconstructor;
 
 import java.util.List;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * PO 重建结果
  *
  * @author nona
  */
+@ScaffoldGenerated
 public record ReconstructedPos(List<Object> toSave, List<DeletionInfo> toDelete) {
 
     /**

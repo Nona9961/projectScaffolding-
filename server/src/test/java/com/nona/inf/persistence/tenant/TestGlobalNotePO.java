@@ -3,6 +3,7 @@ package com.nona.inf.persistence.tenant;
 import com.nona.inf.persistence.po.BasePO;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * 租户隔离测试用的 global note PO。
@@ -11,6 +12,7 @@ import jakarta.persistence.Table;
  */
 @Entity
 @Table(name = "test_global_note")
+@ScaffoldGenerated
 public class TestGlobalNotePO extends BasePO {
 
     private String content;

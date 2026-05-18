@@ -8,6 +8,7 @@ import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.springframework.stereotype.Component;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * 多租户隔离（ADR-001 / ADR-007）
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Component;
 @Aspect
 @Component
 @RequiredArgsConstructor
+@ScaffoldGenerated
 public class TenantRepositoryAspect {
 
     private final TenantContextAccessor tenantContextAccessor;
@@ -42,7 +44,7 @@ public class TenantRepositoryAspect {
      * @param joinPoint AOP 连接点
      */
     private void enforceTenantWriteIfNeeded(ProceedingJoinPoint joinPoint) {
-        String methodName = joinPoint.getSignature().getName();
+        final String methodName = joinPoint.getSignature().getName();
         if ("save".equals(methodName)) {
             Object[] args = joinPoint.getArgs();
             if (args == null || args.length == 0) {
@@ -57,7 +59,7 @@ public class TenantRepositoryAspect {
             if (args == null || args.length == 0) {
                 return;
             }
-            Object first = args[0];
+            final Object first = args[0];
             if (!(first instanceof Iterable<?> iterable)) {
                 return;
             }
@@ -70,8 +72,10 @@ public class TenantRepositoryAspect {
     /**
      * 对 tenant-scoped 实体执行写入门禁：
      * <p>
-     * - cross-tenant：必须显式提供 entity tenantID
-     * - non cross-tenant：当前 tenant 缺失则拒绝；entity tenantID 缺失则注入；不一致则拒绝
+     * - 无论 cross-tenant 或 non-cross-tenant，当前 tenant 缺失则拒绝
+     * - cross-tenant：entity tenantID 缺失则注入当前 tenant（admin 普通创建场景）；
+     *   已显式指定则保留原值，支持跨租户维护
+     * - non cross-tenant：entity tenantID 缺失则注入；不一致则拒绝
      *
      * @param entity 待写入的实体对象
      * @throws com.nona.exceptions.BusinessException 当租户规则校验失败时抛出
@@ -81,18 +85,21 @@ public class TenantRepositoryAspect {
             return;
         }
 
-        if (tenantContextAccessor.isCrossTenant()) {
-            String entityTenantID = normalizeTenantID(tenantScopedPO.getTenantID());
-            BusinessAssert.assertTrue(entityTenantID != null, "tenantID is required for cross-tenant write operation");
-            BusinessAssert.assertTrue(!TenantContextAccessor.MISSING_TENANT_ID.equals(entityTenantID), "invalid tenantID: {}", entityTenantID);
-            return;
-        }
-
-        String tenantID = tenantContextAccessor.getTenantID();
+        final String tenantID = tenantContextAccessor.getTenantID();
         BusinessAssert.assertNonNull(tenantID, "tenantID is required for tenant-scoped write operation");
         BusinessAssert.assertTrue(!TenantContextAccessor.MISSING_TENANT_ID.equals(tenantID), "invalid tenantID: {}", tenantID);
 
-        String entityTenantID = normalizeTenantID(tenantScopedPO.getTenantID());
+        final String entityTenantID = normalizeTenantID(tenantScopedPO.getTenantID());
+        if (tenantContextAccessor.isCrossTenant()) {
+            if (entityTenantID == null) {
+                tenantScopedPO.setTenantID(tenantID);
+                return;
+            }
+            BusinessAssert.assertTrue(!TenantContextAccessor.MISSING_TENANT_ID.equals(entityTenantID),
+                    "invalid tenantID: {}", entityTenantID);
+            return;
+        }
+
         if (entityTenantID == null) {
             tenantScopedPO.setTenantID(tenantID);
             return;

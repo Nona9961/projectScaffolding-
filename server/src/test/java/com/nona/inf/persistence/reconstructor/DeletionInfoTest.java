@@ -5,11 +5,13 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * DeletionInfo 单元测试
  */
 @DisplayName("DeletionInfo 测试")
+@ScaffoldGenerated
 class DeletionInfoTest {
 
     static class TestPO {

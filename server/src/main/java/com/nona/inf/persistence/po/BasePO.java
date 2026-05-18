@@ -6,6 +6,7 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 
 import java.time.LocalDateTime;
+import com.nona.annotation.ScaffoldGenerated;
 
 
 /**
@@ -16,6 +17,7 @@ import java.time.LocalDateTime;
 @Data
 @Entity
 @Inheritance(strategy = InheritanceType.TABLE_PER_CLASS)
+@ScaffoldGenerated
 public abstract class BasePO {
     @Id
     protected Long id;

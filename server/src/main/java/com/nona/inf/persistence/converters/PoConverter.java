@@ -1,4 +1,5 @@
 package com.nona.inf.persistence.converters;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * PO 转换器接口（简单实体）
@@ -8,6 +9,7 @@ package com.nona.inf.persistence.converters;
  * @param <DO> 领域对象类型
  * @param <PO> 持久化对象类型
  */
+@ScaffoldGenerated
 public interface PoConverter<DO, PO> {
 
     /**

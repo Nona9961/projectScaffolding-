@@ -6,10 +6,12 @@ import java.util.Map;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.*;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * UnitOfWorkProvider 单元测试
  */
+@ScaffoldGenerated
 class UnitOfWorkProviderTest {
 
     // ========== 测试用类 ==========

@@ -1,10 +1,12 @@
 package com.nona.api;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * 通用返回response
  *
  * @param <T> 数据类型
  */
+@ScaffoldGenerated
 public record HttpResponse<T>(int code, String message, boolean success, T data) {
 
     public static final int SUCCESS_CODE = 0;

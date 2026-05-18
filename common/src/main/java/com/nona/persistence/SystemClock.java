@@ -6,6 +6,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * System Clock
@@ -14,9 +15,8 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * @author lry
  */
+@ScaffoldGenerated
 public enum SystemClock {
-
-    // ====
 
     INSTANCE(1);
 

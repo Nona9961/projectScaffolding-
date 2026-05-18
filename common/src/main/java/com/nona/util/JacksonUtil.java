@@ -5,19 +5,24 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.nona.exceptions.BusinessException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.IOException;
 import java.util.Objects;
+import com.nona.annotation.ScaffoldGenerated;
 
 @Slf4j
+@ScaffoldGenerated
 public class JacksonUtil {
     public static final ObjectMapper DEFAULT_MAPPER = init();
 
     private static ObjectMapper init() {
         final ObjectMapper mapper = new ObjectMapper();
+        mapper.registerModule(new JavaTimeModule());
+        mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         mapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
         return mapper;
@@ -84,9 +89,8 @@ public class JacksonUtil {
         }
     }
 
-    //region base methods
     public static ObjectNode toObjectNode(Object object, ObjectMapper mapper) {
-        JsonNode node = toJsonNode(object, mapper);
+        final JsonNode node = toJsonNode(object, mapper);
         if (node instanceof ObjectNode objectNode) {
             return objectNode;
         }
@@ -94,7 +98,7 @@ public class JacksonUtil {
     }
 
     public static ArrayNode toArrayNode(Object object, ObjectMapper mapper) {
-        JsonNode node = toJsonNode(object, mapper);
+        final JsonNode node = toJsonNode(object, mapper);
         if (node instanceof ArrayNode arrayNode) {
             return arrayNode;
         }
@@ -102,7 +106,7 @@ public class JacksonUtil {
     }
 
     public static ObjectNode jsonToObjNode(String json, ObjectMapper mapper) {
-        JsonNode node = jsonToNode(json, mapper);
+        final JsonNode node = jsonToNode(json, mapper);
         if (node instanceof ObjectNode objectNode) {
             return objectNode;
         }
@@ -110,7 +114,7 @@ public class JacksonUtil {
     }
 
     public static ArrayNode jsonToArrayNode(String json, ObjectMapper mapper) {
-        JsonNode node = jsonToNode(json, mapper);
+        final JsonNode node = jsonToNode(json, mapper);
         if (node instanceof ArrayNode arrayNode) {
             return arrayNode;
         }
@@ -208,7 +212,6 @@ public class JacksonUtil {
         return mapper.convertValue(jsonNode, javaType);
     }
 
-    //  endregion
     private static void handleException(Exception e, Object input) {
         log.error("Jackson operation failed for input: {}", input, e);
         throw new BusinessException("internal error");

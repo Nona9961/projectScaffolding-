@@ -1,6 +1,7 @@
 package com.nona.inf.persistence.converters;
 
 import jakarta.annotation.Nullable;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * 关系型数据库 root和po的转换器
@@ -12,6 +13,7 @@ import jakarta.annotation.Nullable;
  * @param <Other> 聚合的其他信息
  * @author nona
  */
+@ScaffoldGenerated
 public interface RdbGeneralConvertor<Root, PO, Other> {
 
     Class<Root> rootClass();

@@ -16,6 +16,7 @@ import java.lang.reflect.Field;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * PO 重建器
@@ -43,6 +44,7 @@ import java.util.regex.Pattern;
  * @author nona
  */
 @RequiredArgsConstructor
+@ScaffoldGenerated
 public class PoReconstructor {
 
     private static final Pattern IDENTIFIER_PATTERN = Pattern.compile("\\w+\\[(.+?)]");
@@ -64,13 +66,11 @@ public class PoReconstructor {
 
         final DispatchedChanges dispatched = changeDispatcher.dispatch(changeSet, rootClass);
 
-        // 处理主表变更
         if (!dispatched.getMainTableChanges().isEmpty()) {
             converterRegistry.getCompositeConverter(rootClass)
                     .ifPresent(converter -> toSave.add(convertToMainPO(converter, root)));
         }
 
-        // 处理子表变更
         final Map<String, PoConverter<?, ?>> allConverters = converterRegistry.getAllConverters();
         for (final Map.Entry<String, DispatchedChanges.CollectionChanges> entry : dispatched.getChildTableChanges().entrySet()) {
             final String fieldName = entry.getKey();
@@ -107,7 +107,6 @@ public class PoReconstructor {
             List<Object> toSave,
             List<DeletionInfo> toDelete) {
 
-        // 新增：从 Root 中查找新增的子对象，转换为 PO
         for (final ItemAddedChange iac : changes.getAdditions()) {
             final Object identifier = ((ObjectNode) iac.addedItem()).identifier();
             final Object childDO = findChildFromRoot(root, fieldName, identifier);
@@ -116,13 +115,11 @@ public class PoReconstructor {
             }
         }
 
-        // 删除：记录需要删除的 PO 主键（Long 类型，与 BasePO.id 一致）
         for (final ItemRemovedChange irc : changes.getRemovals()) {
             final Object identifier = ((ObjectNode) irc.removedItem()).identifier();
             toDelete.add(new DeletionInfo(converter.poClass(), (Long) identifier));
         }
 
-        // 更新：从 Root 中查找变更的子对象，转换为 PO
         final Set<Object> updatedIdentifiers = extractIdentifiersFromFieldChanges(changes.getFieldChanges());
         for (final Object identifier : updatedIdentifiers) {
             final Object childDO = findChildFromRoot(root, fieldName, identifier);
@@ -174,7 +171,6 @@ public class PoReconstructor {
         }
         visited.add(current);
 
-        // 1. 先在当前对象的直接字段中查找
         try {
             final Field field = findField(current.getClass(), fieldName);
             if (field != null) {
@@ -190,11 +186,9 @@ public class PoReconstructor {
                     }
                 }
             }
-        } catch (IllegalAccessException e) {
-            // ignore
+        } catch (IllegalAccessException ignored) {
         }
 
-        // 2. 递归查找所有集合字段中的子对象
         for (final Field field : getAllFields(current.getClass())) {
             try {
                 field.setAccessible(true);
@@ -208,8 +202,7 @@ public class PoReconstructor {
                         }
                     }
                 }
-            } catch (IllegalAccessException e) {
-                // ignore
+            } catch (IllegalAccessException ignored) {
             }
         }
 
@@ -248,8 +241,7 @@ public class PoReconstructor {
                 idField.setAccessible(true);
                 return idField.get(item);
             }
-        } catch (IllegalAccessException e) {
-            // ignore
+        } catch (IllegalAccessException ignored) {
         }
         return null;
     }

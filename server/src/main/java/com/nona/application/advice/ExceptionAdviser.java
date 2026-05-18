@@ -10,9 +10,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.HashMap;
 import java.util.Map;
+import com.nona.annotation.ScaffoldGenerated;
 
 @RestControllerAdvice
 @Slf4j
+@ScaffoldGenerated
 public class ExceptionAdviser {
 
     @ExceptionHandler(BusinessException.class)

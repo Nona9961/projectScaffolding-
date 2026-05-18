@@ -4,6 +4,7 @@ import com.nona.inf.context.TenantContextAccessor;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.context.spi.CurrentTenantIdentifierResolver;
 import org.springframework.stereotype.Component;
+import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * Hibernate tenant identifier resolver（discriminator multi-tenancy）
@@ -16,6 +17,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @RequiredArgsConstructor
+@ScaffoldGenerated
 public class ThreadContextTenantIdentifierResolver implements CurrentTenantIdentifierResolver<String> {
 
     public static final String ROOT_TENANT_ID = "__ROOT_TENANT__";
