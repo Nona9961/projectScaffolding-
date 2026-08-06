@@ -25,3 +25,6 @@ replay_pid*
 
 # Scaffold self-maintenance issues
 /issues/
+
+target/
+.mvn/maven.config
