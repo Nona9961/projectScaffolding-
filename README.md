@@ -20,7 +20,7 @@ mvn spring-boot:run -pl server
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  加载聚合根 → 注册到 UOW → 业务修改 → 计算变更 → 重建 PO → 持久化  │
+│  加载聚合根 → 注册到 ChangeTracker → 业务修改 → 计算变更 → 重建 PO → 持久化  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -43,18 +43,18 @@ class Order {
 record Money(BigDecimal amount) {}
 ```
 
-### 2. 配置 UOW（核心！）
+### 2. 配置 ChangeTracker（核心！）
 
 ```java
 // 在 Repository 构造时配置
-UnitOfWorkProvider uowProvider = UnitOfWorkProvider.builder()
+ChangeTrackerProvider trackerProvider = ChangeTrackerProvider.builder()
     .withIdentifier(Order.class, Order::getId)
     .withIdentifier(OrderItem.class, OrderItem::getId)
-    .withValueType(Money.class)      // 值类型不展开追踪
+    .withValueType(Money.class)      // 值类型不展开追踪（必须不可变）
     .build();
 
-// UOW 自动追踪：
-// 1. getByID() 时注册快照
+// ChangeTracker 自动追踪：
+// 1. getByID() 时 track（建立快照基线）
 // 2. 修改字段时记录变更
 // 3. save() 时生成 ChangeSet
 ```
@@ -191,6 +191,24 @@ projectScaffolding/
 ├── api/        # 接口模块（DTO、API定义）
 └── server/     # 主应用（DDD领域模型、持久化）
 ```
+
+## changeTracking 同步说明
+
+脚手架依赖 changeTracking（`change-tracking-api` 1.0-SNAPSHOT），2026-08-06 完成一轮 breaking 同步（对应任务 `ct-review-fix`）：
+
+| changeTracking 变更 | 脚手架同步情况 |
+|---|---|
+| `UnitOfWork` → `ChangeTracker`（包 `domain.model.tracking`）；`registerClean/New/Removed` → `track`/`excludeNew`/`excludeRemoved`；`UnitOfWorkFactory` → `ChangeTrackerFactory` | 已同步：`ChangeTrackerProvider` / `ChangeTrackerAutoConfiguration` / `DifferRepository` 全链路改名 |
+| `FieldChange` → `ValueChange` + 新增 `ObjectFieldChange`（对象/集合字段整体替换，携带 ValueNode） | 已同步：`ChangeDispatcher` / `PoReconstructor` 分支改名 + 新增类型处理（`newNode()` 为 `NullNode`=清空、`ObjectNode`=赋值） |
+| 快照节点只读 API（`ObjectNode.fields()` / `CollectionNode.items()` 移除） | 零代码改动（grep 验证无调用方） |
+| `SnapshotStrategy<S>` 泛型参数化 | 零代码改动（消费方不实现 SPI） |
+
+对应的 API 变化 issue：`backend/issues/008`（A4 快照不可变）、`009`（A1 变更模型拆分）、`010`（A5 泛型收紧）、`011`（A7 改名）。
+
+行为变化提示：
+- 对象字段从对象降级为 null（或反之、集合↔对象等跨类型变化）不再产生 `ValueChange`，而是 `ObjectFieldChange`——按 `newNode()` 的 ValueNode 类型判断新状态
+- 数组按值语义比较（顺序敏感，`{1,2,3}` ≠ `{3,2,1}`）；`byte[]`/`String[]` 等值类型数组快照为 `ArrayNode`
+- `calculateChanges()` 是幂等视图（无副作用，重复调用返回相同变更集），推进基线需重新 `track()`（`DifferRepository` 保存后已自动重新登记）
 
 ## 项目状态
 
