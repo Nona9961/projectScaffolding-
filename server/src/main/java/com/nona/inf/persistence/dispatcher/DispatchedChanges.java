@@ -1,8 +1,10 @@
 package com.nona.inf.persistence.dispatcher;
 
-import com.nona.changeTracking.domain.model.changeset.FieldChange;
+import com.nona.changeTracking.domain.model.changeset.Change;
 import com.nona.changeTracking.domain.model.changeset.ItemAddedChange;
 import com.nona.changeTracking.domain.model.changeset.ItemRemovedChange;
+import com.nona.changeTracking.domain.model.changeset.ObjectFieldChange;
+import com.nona.changeTracking.domain.model.changeset.ValueChange;
 import lombok.Getter;
 
 import java.util.ArrayList;
@@ -26,8 +28,11 @@ public class DispatchedChanges {
 
     /**
      * 主表字段变更列表
+     * <p>
+     * 元素类型为 {@link ValueChange}（业务值）或 {@link ObjectFieldChange}
+     * （对象/集合字段整体替换，ValueNode 承载，无业务值）。
      */
-    private final List<FieldChange> mainTableChanges = new ArrayList<>();
+    private final List<Change> mainTableChanges = new ArrayList<>();
 
     /**
      * 子表/集合变更，按字段名分组
@@ -39,8 +44,10 @@ public class DispatchedChanges {
 
     /**
      * 添加主表字段变更
+     *
+     * @param change 主表字段变更（ValueChange 或 ObjectFieldChange）
      */
-    public void addMainTableChange(FieldChange change) {
+    public void addMainTableChange(Change change) {
         mainTableChanges.add(change);
     }
 
@@ -68,8 +75,11 @@ public class DispatchedChanges {
 
         /**
          * 字段变更列表
+         * <p>
+         * 元素类型为 {@link ValueChange}（业务值）或 {@link ObjectFieldChange}
+         * （对象/集合字段整体替换，ValueNode 承载，无业务值）。
          */
-        private final List<FieldChange> fieldChanges = new ArrayList<>();
+        private final List<Change> fieldChanges = new ArrayList<>();
 
         public void addAddition(ItemAddedChange change) {
             additions.add(change);
@@ -79,7 +89,7 @@ public class DispatchedChanges {
             removals.add(change);
         }
 
-        public void addFieldChange(FieldChange change) {
+        public void addFieldChange(Change change) {
             fieldChanges.add(change);
         }
     }

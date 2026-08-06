@@ -1,7 +1,7 @@
 package com.nona.inf.persistence.integration;
 
 import com.nona.changeTracking.domain.model.changeset.*;
-import com.nona.changeTracking.domain.model.unitofwork.UnitOfWork;
+import com.nona.changeTracking.domain.model.tracking.ChangeTracker;
 import com.nona.changeTracking.internal.capability.DefaultTrackingCapabilityProvider;
 import com.nona.inf.persistence.converters.CompositePoConverter;
 import com.nona.inf.persistence.converters.ConverterRegistry;
@@ -46,7 +46,7 @@ import com.nona.annotation.ScaffoldGenerated;
  * <ul>
  *     <li>✅ <b>DifferRepository</b> 的完整生命周期（getByID, save, delete）</li>
  *     <li>✅ <b>ChangeApplier</b> 自动生成 SQL（UPDATE/INSERT/DELETE）</li>
- *     <li>✅ <b>UnitOfWork + ChangeSet</b> 变更追踪</li>
+ *     <li>✅ <b>ChangeTracker + ChangeSet</b> 变更追踪</li>
  *     <li>✅ <b>端到端持久化流程</b>（repository.getByID() → 修改 → repository.save() → 验证）</li>
  *     <li>✅ 复杂对象图（4层嵌套 + Map + 单实体 + 值对象）</li>
  * </ul>
@@ -168,8 +168,8 @@ class FullIntegrationTest {
 
         // 初始化 OrderRepository
         com.nona.inf.context.ThreadContext threadContext = new com.nona.inf.context.ThreadContext();
-        com.nona.inf.persistence.tracking.UnitOfWorkProvider unitOfWorkProvider =
-                com.nona.inf.persistence.tracking.UnitOfWorkProvider.builder()
+        com.nona.inf.persistence.tracking.ChangeTrackerProvider changeTrackerProvider =
+                com.nona.inf.persistence.tracking.ChangeTrackerProvider.builder()
                         .withIdentifier(OrderItem.class, OrderItem::getId)
                         .withIdentifier(SubItem.class, SubItem::getId)
                         .withIdentifier(Spec.class, Spec::getKey)
@@ -184,7 +184,7 @@ class FullIntegrationTest {
                 new InMemoryOrderPORepository(jdbc, orderConverter);
 
         orderRepository = new OrderRepository(crudRepo, threadContext, orderConverter,
-                unitOfWorkProvider, jdbc, registry);
+                changeTrackerProvider, jdbc, registry);
     }
 
     // ==================== 值对象 ====================
@@ -639,22 +639,22 @@ class FullIntegrationTest {
     }
 
     @Nested
-    @DisplayName("UnitOfWorkProvider 测试")
-    class UnitOfWorkProviderTest {
+    @DisplayName("ChangeTrackerProvider 测试")
+    class ChangeTrackerProviderTest {
 
         @Test
-        @DisplayName("创建 UnitOfWork 实例")
-        void shouldCreateUnitOfWork() {
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            assertThat(uow).isNotNull();
+        @DisplayName("创建 ChangeTracker 实例")
+        void shouldCreateChangeTracker() {
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            assertThat(changeTracker).isNotNull();
         }
 
         @Test
         @DisplayName("每次创建独立实例")
         void shouldCreateIndependentInstances() {
-            UnitOfWork uow1 = new UnitOfWork(trackingProvider.create());
-            UnitOfWork uow2 = new UnitOfWork(trackingProvider.create());
-            assertThat(uow1).isNotSameAs(uow2);
+            ChangeTracker changeTracker1 = new ChangeTracker(trackingProvider.create());
+            ChangeTracker changeTracker2 = new ChangeTracker(trackingProvider.create());
+            assertThat(changeTracker1).isNotSameAs(changeTracker2);
         }
     }
 
@@ -685,7 +685,7 @@ class FullIntegrationTest {
 
         @Test
         @DisplayName("UPDATE: 检测字段变更并更新")
-        void shouldDetectAndApplyFieldChanges() {
+        void shouldDetectAndApplyValueChanges() {
             // 准备数据
             Order order = new Order(1L, "ORD-001");
             order.setStatus("PENDING");
@@ -694,20 +694,20 @@ class FullIntegrationTest {
 
             // 加载并追踪
             Order loaded = loadOrder(1L);
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             // 修改
             loaded.setStatus("CONFIRMED");
             loaded.setTotalAmount(Money.of(new BigDecimal("200.00")));
 
             // 计算变更
-            ChangeSet changeSet = uow.calculateChanges();
+            ChangeSet changeSet = changeTracker.calculateChanges();
             assertThat(changeSet.isEmpty()).isFalse();
 
-            List<FieldChange> fieldChanges = changeSet.getLeafChanges().stream()
-                    .filter(c -> c instanceof FieldChange)
-                    .map(c -> (FieldChange) c)
+            List<ValueChange> fieldChanges = changeSet.getLeafChanges().stream()
+                    .filter(c -> c instanceof ValueChange)
+                    .map(c -> (ValueChange) c)
                     .toList();
             assertThat(fieldChanges).isNotEmpty();
 
@@ -722,7 +722,7 @@ class FullIntegrationTest {
 
         @Test
         @DisplayName("UPDATE: 检测子项字段变更")
-        void shouldDetectItemFieldChanges() {
+        void shouldDetectItemValueChanges() {
             // 准备数据
             Order order = new Order(1L, "ORD-001");
             order.setStatus("PENDING");
@@ -734,18 +734,18 @@ class FullIntegrationTest {
 
             // 加载并追踪
             Order loaded = loadOrder(1L);
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             // 修改子项
             loaded.getItems().get(0).setQuantity(5);
             loaded.getItems().get(0).setProductName("商品A（促销版）");
 
             // 计算变更
-            ChangeSet changeSet = uow.calculateChanges();
-            List<FieldChange> fieldChanges = changeSet.getLeafChanges().stream()
-                    .filter(c -> c instanceof FieldChange)
-                    .map(c -> (FieldChange) c)
+            ChangeSet changeSet = changeTracker.calculateChanges();
+            List<ValueChange> fieldChanges = changeSet.getLeafChanges().stream()
+                    .filter(c -> c instanceof ValueChange)
+                    .map(c -> (ValueChange) c)
                     .toList();
 
             assertThat(fieldChanges).hasSize(2);
@@ -767,15 +767,15 @@ class FullIntegrationTest {
 
             // 加载并追踪
             Order loaded = loadOrder(1L);
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             // 新增子项
             OrderItem newItem = new OrderItem(102L, "SKU-002", "商品B", 1, Money.of(new BigDecimal("50.00")));
             loaded.getItems().add(newItem);
 
             // 计算变更
-            ChangeSet changeSet = uow.calculateChanges();
+            ChangeSet changeSet = changeTracker.calculateChanges();
             List<ItemAddedChange> addedChanges = changeSet.getLeafChanges().stream()
                     .filter(c -> c instanceof ItemAddedChange)
                     .map(c -> (ItemAddedChange) c)
@@ -801,8 +801,8 @@ class FullIntegrationTest {
 
             // 加载并追踪
             Order loaded = loadOrder(1L);
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             // 删除子项
             OrderItem toRemove = loaded.getItems().stream()
@@ -811,7 +811,7 @@ class FullIntegrationTest {
             loaded.getItems().remove(toRemove);
 
             // 计算变更
-            ChangeSet changeSet = uow.calculateChanges();
+            ChangeSet changeSet = changeTracker.calculateChanges();
             List<ItemRemovedChange> removedChanges = changeSet.getLeafChanges().stream()
                     .filter(c -> c instanceof ItemRemovedChange)
                     .map(c -> (ItemRemovedChange) c)
@@ -838,8 +838,8 @@ class FullIntegrationTest {
 
             // 加载并追踪
             Order loaded = loadOrder(1L);
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             // 执行多种变更
             loaded.setStatus("CONFIRMED");                           // 主表字段变更
@@ -850,10 +850,10 @@ class FullIntegrationTest {
             loaded.getItems().add(newItem);                          // 新增子项
 
             // 计算变更
-            ChangeSet changeSet = uow.calculateChanges();
+            ChangeSet changeSet = changeTracker.calculateChanges();
             List<Change> changes = changeSet.getLeafChanges();
 
-            long fieldChanges = changes.stream().filter(c -> c instanceof FieldChange).count();
+            long fieldChanges = changes.stream().filter(c -> c instanceof ValueChange).count();
             long itemAdded = changes.stream().filter(c -> c instanceof ItemAddedChange).count();
             long itemRemoved = changes.stream().filter(c -> c instanceof ItemRemovedChange).count();
 
@@ -872,11 +872,11 @@ class FullIntegrationTest {
 
             // 加载并追踪
             Order loaded = loadOrder(1L);
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             // 不做任何修改
-            ChangeSet changeSet = uow.calculateChanges();
+            ChangeSet changeSet = changeTracker.calculateChanges();
 
             assertThat(changeSet.isEmpty()).isTrue();
         }
@@ -889,13 +889,13 @@ class FullIntegrationTest {
             insertOrder(orderConverter.toMainPO(order));
 
             Order loaded = loadOrder(1L);
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             // 替换值对象
             loaded.setTotalAmount(new Money(new BigDecimal("200.00"), "USD"));
 
-            ChangeSet changeSet = uow.calculateChanges();
+            ChangeSet changeSet = changeTracker.calculateChanges();
             assertThat(changeSet.isEmpty()).isFalse();
         }
     }
@@ -908,7 +908,7 @@ class FullIntegrationTest {
 
         @Test
         @DisplayName("E01: 单实体字段变更")
-        void shouldDetectSingleEntityFieldChange() {
+        void shouldDetectSingleEntityValueChange() {
             Order order = new Order(1L, "ORD-001");
             Customer customer = new Customer(10L, "张三");
             order.setCustomer(customer);
@@ -916,15 +916,15 @@ class FullIntegrationTest {
             insertCustomer(customer, order.getId());
 
             Order loaded = loadOrder(1L);
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             loaded.getCustomer().setName("李四");
 
-            ChangeSet changeSet = uow.calculateChanges();
-            List<FieldChange> changes = changeSet.getLeafChanges().stream()
-                    .filter(c -> c instanceof FieldChange)
-                    .map(c -> (FieldChange) c)
+            ChangeSet changeSet = changeTracker.calculateChanges();
+            List<ValueChange> changes = changeSet.getLeafChanges().stream()
+                    .filter(c -> c instanceof ValueChange)
+                    .map(c -> (ValueChange) c)
                     .toList();
 
             assertThat(changes).anyMatch(fc -> fc.path().contains("customer") && fc.path().contains("name"));
@@ -941,12 +941,12 @@ class FullIntegrationTest {
             insertCustomer(customer, order.getId());
 
             Order loaded = loadOrder(1L);
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             loaded.getCustomer().setContact(new ContactInfo("13900139000", "test@example.com"));
 
-            ChangeSet changeSet = uow.calculateChanges();
+            ChangeSet changeSet = changeTracker.calculateChanges();
             assertThat(changeSet.isEmpty()).isFalse();
         }
 
@@ -957,12 +957,12 @@ class FullIntegrationTest {
             insertOrder(orderConverter.toMainPO(order));
 
             Order loaded = loadOrder(1L);
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             loaded.setCustomer(new Customer(10L, "张三"));
 
-            ChangeSet changeSet = uow.calculateChanges();
+            ChangeSet changeSet = changeTracker.calculateChanges();
             assertThat(changeSet.isEmpty()).isFalse();
         }
 
@@ -976,12 +976,12 @@ class FullIntegrationTest {
             insertCustomer(customer, order.getId());
 
             Order loaded = loadOrder(1L);
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             loaded.setCustomer(null);
 
-            ChangeSet changeSet = uow.calculateChanges();
+            ChangeSet changeSet = changeTracker.calculateChanges();
             assertThat(changeSet.isEmpty()).isFalse();
         }
     }
@@ -994,7 +994,7 @@ class FullIntegrationTest {
 
         @Test
         @DisplayName("N01: 二层嵌套字段变更")
-        void shouldDetectSecondLevelFieldChange() {
+        void shouldDetectSecondLevelValueChange() {
             Order order = new Order(1L, "ORD-001");
             OrderItem item = new OrderItem(101L, "SKU-001", "商品A", 2, Money.of(new BigDecimal("30.00")));
             order.getItems().add(item);
@@ -1002,21 +1002,21 @@ class FullIntegrationTest {
             insertOrderItem(item, order.getId());
 
             Order loaded = loadOrder(1L);
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             loaded.getItems().get(0).setProductName("商品A改");
 
-            ChangeSet changeSet = uow.calculateChanges();
+            ChangeSet changeSet = changeTracker.calculateChanges();
             assertThat(changeSet.getLeafChanges().stream()
-                    .filter(c -> c instanceof FieldChange)
-                    .map(c -> (FieldChange) c)
+                    .filter(c -> c instanceof ValueChange)
+                    .map(c -> (ValueChange) c)
                     .anyMatch(fc -> fc.path().contains("productName"))).isTrue();
         }
 
         @Test
         @DisplayName("N02: 三层嵌套字段变更")
-        void shouldDetectThirdLevelFieldChange() {
+        void shouldDetectThirdLevelValueChange() {
             Order order = new Order(1L, "ORD-001");
             OrderItem item = new OrderItem(101L, "SKU-001", "商品A", 2, Money.of(new BigDecimal("30.00")));
             SubItem subItem = new SubItem(1001L, "子项1");
@@ -1026,21 +1026,21 @@ class FullIntegrationTest {
             insertOrderItem(item, order.getId());
 
             Order loaded = loadOrder(1L);
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             loaded.getItems().get(0).getSubItems().get(0).setName("子项1改");
 
-            ChangeSet changeSet = uow.calculateChanges();
+            ChangeSet changeSet = changeTracker.calculateChanges();
             assertThat(changeSet.getLeafChanges().stream()
-                    .filter(c -> c instanceof FieldChange)
-                    .map(c -> (FieldChange) c)
+                    .filter(c -> c instanceof ValueChange)
+                    .map(c -> (ValueChange) c)
                     .anyMatch(fc -> fc.path().contains("subItems") && fc.path().contains("name"))).isTrue();
         }
 
         @Test
         @DisplayName("N03: 四层嵌套字段变更")
-        void shouldDetectFourthLevelFieldChange() {
+        void shouldDetectFourthLevelValueChange() {
             Order order = new Order(1L, "ORD-001");
             OrderItem item = new OrderItem(101L, "SKU-001", "商品A", 2, Money.of(new BigDecimal("30.00")));
             SubItem subItem = new SubItem(1001L, "子项1");
@@ -1051,15 +1051,15 @@ class FullIntegrationTest {
             insertOrderItem(item, order.getId());
 
             Order loaded = loadOrder(1L);
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             loaded.getItems().get(0).getSubItems().get(0).getSpecs().get(0).setValue("蓝色");
 
-            ChangeSet changeSet = uow.calculateChanges();
+            ChangeSet changeSet = changeTracker.calculateChanges();
             assertThat(changeSet.getLeafChanges().stream()
-                    .filter(c -> c instanceof FieldChange)
-                    .map(c -> (FieldChange) c)
+                    .filter(c -> c instanceof ValueChange)
+                    .map(c -> (ValueChange) c)
                     .anyMatch(fc -> fc.path().contains("specs") && fc.path().contains("value"))).isTrue();
         }
 
@@ -1073,12 +1073,12 @@ class FullIntegrationTest {
             insertOrderItem(item, order.getId());
 
             Order loaded = loadOrder(1L);
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             loaded.getItems().get(0).getSubItems().add(new SubItem(1001L, "新子项"));
 
-            ChangeSet changeSet = uow.calculateChanges();
+            ChangeSet changeSet = changeTracker.calculateChanges();
             assertThat(changeSet.getLeafChanges().stream()
                     .anyMatch(c -> c instanceof ItemAddedChange)).isTrue();
         }
@@ -1095,12 +1095,12 @@ class FullIntegrationTest {
             insertOrderItem(item, order.getId());
 
             Order loaded = loadOrder(1L);
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             loaded.getItems().get(0).getSubItems().get(0).getSpecs().add(new Spec("尺寸", "XL"));
 
-            ChangeSet changeSet = uow.calculateChanges();
+            ChangeSet changeSet = changeTracker.calculateChanges();
             assertThat(changeSet.getLeafChanges().stream()
                     .anyMatch(c -> c instanceof ItemAddedChange)).isTrue();
         }
@@ -1115,12 +1115,12 @@ class FullIntegrationTest {
             insertOrderItem(item, order.getId());
 
             Order loaded = loadOrder(1L);
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             loaded.getItems().get(0).setUnitPrice(Money.of(new BigDecimal("50.00")));
 
-            ChangeSet changeSet = uow.calculateChanges();
+            ChangeSet changeSet = changeTracker.calculateChanges();
             assertThat(changeSet.isEmpty()).isFalse();
         }
 
@@ -1135,12 +1135,12 @@ class FullIntegrationTest {
             insertCustomer(customer, order.getId());
 
             Order loaded = loadOrder(1L);
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             loaded.getCustomer().getAddresses().add(new Address(2L, "WORK", "上海"));
 
-            ChangeSet changeSet = uow.calculateChanges();
+            ChangeSet changeSet = changeTracker.calculateChanges();
             assertThat(changeSet.getLeafChanges().stream()
                     .anyMatch(c -> c instanceof ItemAddedChange)).isTrue();
         }
@@ -1159,12 +1159,12 @@ class FullIntegrationTest {
             insertOrder(orderConverter.toMainPO(order));
 
             Order loaded = loadOrder(1L);
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             loaded.getExtensions().put("key1", "value1");
 
-            ChangeSet changeSet = uow.calculateChanges();
+            ChangeSet changeSet = changeTracker.calculateChanges();
             assertThat(changeSet.getLeafChanges().stream()
                     .anyMatch(c -> c instanceof ItemAddedChange)).isTrue();
         }
@@ -1178,12 +1178,12 @@ class FullIntegrationTest {
 
             Order loaded = loadOrder(1L);
             loaded.getExtensions().put("key1", "value1");
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             loaded.getExtensions().remove("key1");
 
-            ChangeSet changeSet = uow.calculateChanges();
+            ChangeSet changeSet = changeTracker.calculateChanges();
             assertThat(changeSet.getLeafChanges().stream()
                     .anyMatch(c -> c instanceof ItemRemovedChange)).isTrue();
         }
@@ -1197,15 +1197,15 @@ class FullIntegrationTest {
 
             Order loaded = loadOrder(1L);
             loaded.getExtensions().put("key1", "value1");
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             loaded.getExtensions().put("key1", "value2");
 
-            ChangeSet changeSet = uow.calculateChanges();
+            ChangeSet changeSet = changeTracker.calculateChanges();
             assertThat(changeSet.getLeafChanges().stream()
-                    .filter(c -> c instanceof FieldChange)
-                    .map(c -> (FieldChange) c)
+                    .filter(c -> c instanceof ValueChange)
+                    .map(c -> (ValueChange) c)
                     .anyMatch(fc -> "value2".equals(fc.newValue()))).isTrue();
         }
 
@@ -1221,12 +1221,12 @@ class FullIntegrationTest {
 
             Order loaded = loadOrder(1L);
             loaded.getItems().get(0).getAttributes().put("color", "red");
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             loaded.getItems().get(0).getAttributes().put("color", "blue");
 
-            ChangeSet changeSet = uow.calculateChanges();
+            ChangeSet changeSet = changeTracker.calculateChanges();
             assertThat(changeSet.isEmpty()).isFalse();
         }
 
@@ -1241,12 +1241,12 @@ class FullIntegrationTest {
             Order loaded = loadOrder(1L);
             loaded.getExtensions().put("k1", "v1");
             loaded.getExtensions().put("k2", "v2");
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             loaded.getExtensions().clear();
 
-            ChangeSet changeSet = uow.calculateChanges();
+            ChangeSet changeSet = changeTracker.calculateChanges();
             long removedCount = changeSet.getLeafChanges().stream()
                     .filter(c -> c instanceof ItemRemovedChange)
                     .count();
@@ -1260,13 +1260,13 @@ class FullIntegrationTest {
             insertOrder(orderConverter.toMainPO(order));
 
             Order loaded = loadOrder(1L);
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             loaded.getExtensions().put("k1", "v1");
             loaded.getExtensions().put("k2", "v2");
 
-            ChangeSet changeSet = uow.calculateChanges();
+            ChangeSet changeSet = changeTracker.calculateChanges();
             long addedCount = changeSet.getLeafChanges().stream()
                     .filter(c -> c instanceof ItemAddedChange)
                     .count();
@@ -1305,8 +1305,8 @@ class FullIntegrationTest {
 
             // 加载并追踪
             Order loaded = loadOrder(1L);
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             // 全层级变更（不包含 Map，因为 change-tracking 库暂不支持）
             loaded.setStatus("CONFIRMED");                                          // 第1层
@@ -1315,10 +1315,10 @@ class FullIntegrationTest {
             loaded.getItems().get(0).getSubItems().get(0).setName("子项1改");        // 第3层
             loaded.getItems().get(0).getSubItems().get(0).getSpecs().get(0).setValue("蓝色"); // 第4层
 
-            ChangeSet changeSet = uow.calculateChanges();
-            List<FieldChange> fieldChanges = changeSet.getLeafChanges().stream()
-                    .filter(c -> c instanceof FieldChange)
-                    .map(c -> (FieldChange) c)
+            ChangeSet changeSet = changeTracker.calculateChanges();
+            List<ValueChange> fieldChanges = changeSet.getLeafChanges().stream()
+                    .filter(c -> c instanceof ValueChange)
+                    .map(c -> (ValueChange) c)
                     .toList();
 
             assertThat(fieldChanges.size()).isGreaterThanOrEqualTo(5);
@@ -1338,43 +1338,43 @@ class FullIntegrationTest {
             Order loaded1 = loadOrder(1L);
             Order loaded2 = loadOrder(2L);
 
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded1);
-            uow.registerClean(loaded2);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded1);
+            changeTracker.track(loaded2);
 
             loaded1.setStatus("CONFIRMED");
             loaded2.setStatus("SHIPPED");
 
-            ChangeSet changeSet = uow.calculateChanges();
-            List<FieldChange> changes = changeSet.getLeafChanges().stream()
-                    .filter(c -> c instanceof FieldChange)
-                    .map(c -> (FieldChange) c)
+            ChangeSet changeSet = changeTracker.calculateChanges();
+            List<ValueChange> changes = changeSet.getLeafChanges().stream()
+                    .filter(c -> c instanceof ValueChange)
+                    .map(c -> (ValueChange) c)
                     .toList();
 
             assertThat(changes).hasSize(2);
         }
 
         @Test
-        @DisplayName("X03: registerNew 排除")
+        @DisplayName("X03: excludeNew 排除")
         void shouldExcludeNewlyRegisteredObjects() {
             Order order = new Order(1L, "ORD-001");
             order.setStatus("PENDING");
             insertOrder(orderConverter.toMainPO(order));
 
             Order loaded = loadOrder(1L);
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             // 新增的 item 标记为 new
             OrderItem newItem = new OrderItem(101L, "SKU-001", "商品A", 2, Money.of(new BigDecimal("30.00")));
             loaded.getItems().add(newItem);
-            uow.registerNew(newItem);
+            changeTracker.excludeNew(newItem);
 
-            ChangeSet changeSet = uow.calculateChanges();
-            // 新增的对象不应该产生 FieldChange（只有 ItemAddedChange）
-            List<FieldChange> fieldChanges = changeSet.getLeafChanges().stream()
-                    .filter(c -> c instanceof FieldChange)
-                    .map(c -> (FieldChange) c)
+            ChangeSet changeSet = changeTracker.calculateChanges();
+            // 新增的对象不应该产生 ValueChange（只有 ItemAddedChange）
+            List<ValueChange> fieldChanges = changeSet.getLeafChanges().stream()
+                    .filter(c -> c instanceof ValueChange)
+                    .map(c -> (ValueChange) c)
                     .filter(fc -> fc.path().contains("items"))
                     .toList();
 
@@ -1408,7 +1408,7 @@ class FullIntegrationTest {
 
         @Test
         @DisplayName("B02: 主表单字段变更")
-        void shouldUpdateMainTableFieldChange() {
+        void shouldUpdateMainTableValueChange() {
             // 准备初始数据
             Order order = new Order(1L, "ORD-001");
             order.setStatus("PENDING");
@@ -1921,12 +1921,12 @@ class FullIntegrationTest {
             insertOrder(orderConverter.toMainPO(order));
 
             Order loaded = loadOrder(1L);
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             // When
             loaded.setStatus("PAID");
-            ChangeSet changeSet = uow.calculateChanges();
+            ChangeSet changeSet = changeTracker.calculateChanges();
             var result = poReconstructor.reconstruct(loaded, changeSet);
 
             // Then
@@ -1942,13 +1942,13 @@ class FullIntegrationTest {
             insertOrder(orderConverter.toMainPO(order));
 
             Order loaded = loadOrder(1L);
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             // When
             OrderItem newItem = new OrderItem(101L, "SKU-001", "iPhone", 1, Money.of(new java.math.BigDecimal("5999")));
             loaded.getItems().add(newItem);
-            ChangeSet changeSet = uow.calculateChanges();
+            ChangeSet changeSet = changeTracker.calculateChanges();
             var result = poReconstructor.reconstruct(loaded, changeSet);
 
             // Then
@@ -1967,12 +1967,12 @@ class FullIntegrationTest {
             insertOrderItem(item, order.getId());
 
             Order loaded = loadOrder(1L);
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             // When
             loaded.getItems().clear();
-            ChangeSet changeSet = uow.calculateChanges();
+            ChangeSet changeSet = changeTracker.calculateChanges();
             var result = poReconstructor.reconstruct(loaded, changeSet);
 
             // Then
@@ -1991,12 +1991,12 @@ class FullIntegrationTest {
             insertOrderItem(item, order.getId());
 
             Order loaded = loadOrder(1L);
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             // When
             loaded.getItems().get(0).setQuantity(3);
-            ChangeSet changeSet = uow.calculateChanges();
+            ChangeSet changeSet = changeTracker.calculateChanges();
             var result = poReconstructor.reconstruct(loaded, changeSet);
 
             // Then
@@ -2019,15 +2019,15 @@ class FullIntegrationTest {
             insertOrderItem(item2, order.getId());
 
             Order loaded = loadOrder(1L);
-            UnitOfWork uow = new UnitOfWork(trackingProvider.create());
-            uow.registerClean(loaded);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
 
             // When: 主表变更 + 子表更新 + 子表删除 + 子表新增
             loaded.setStatus("PAID");
             loaded.getItems().get(0).setQuantity(2);
             loaded.getItems().remove(1);
             loaded.getItems().add(new OrderItem(103L, "SKU-003", "MacBook", 1, Money.of(new java.math.BigDecimal("9999"))));
-            ChangeSet changeSet = uow.calculateChanges();
+            ChangeSet changeSet = changeTracker.calculateChanges();
             var result = poReconstructor.reconstruct(loaded, changeSet);
 
             // Then

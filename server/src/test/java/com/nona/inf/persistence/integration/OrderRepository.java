@@ -1,13 +1,14 @@
 package com.nona.inf.persistence.integration;
 
 import com.nona.changeTracking.domain.model.changeset.*;
+import com.nona.changeTracking.domain.model.snapshot.NullNode;
 import com.nona.changeTracking.domain.model.snapshot.ObjectNode;
 import com.nona.inf.context.ThreadContext;
 import com.nona.inf.persistence.converters.ConverterRegistry;
 import com.nona.inf.persistence.converters.PoConverter;
 import com.nona.inf.persistence.converters.RdbGeneralConvertor;
 import com.nona.inf.persistence.repository.DifferRepository;
-import com.nona.inf.persistence.tracking.UnitOfWorkProvider;
+import com.nona.inf.persistence.tracking.ChangeTrackerProvider;
 import org.springframework.data.repository.ListCrudRepository;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -29,10 +30,10 @@ class OrderRepository extends DifferRepository<FullIntegrationTest.Order, FullIn
             ListCrudRepository<FullIntegrationTest.OrderPO, Long> repository,
             ThreadContext threadContext,
             RdbGeneralConvertor<FullIntegrationTest.Order, FullIntegrationTest.OrderPO, Map<String, Object>> convertor,
-            UnitOfWorkProvider unitOfWorkProvider,
+            ChangeTrackerProvider changeTrackerProvider,
             JdbcTemplate jdbc,
             ConverterRegistry converterRegistry) {
-        super(repository, threadContext, convertor, unitOfWorkProvider);
+        super(repository, threadContext, convertor, changeTrackerProvider);
         this.jdbc = jdbc;
         this.converterRegistry = converterRegistry;
     }
@@ -180,8 +181,8 @@ class OrderRepository extends DifferRepository<FullIntegrationTest.Order, FullIn
         Map<String, PoConverter<?, ?>> childConverters = converterRegistry.getChildConverters(FullIntegrationTest.Order.class);
 
         // 分类变更
-        List<FieldChange> mainTableChanges = new ArrayList<>();
-        Map<String, List<FieldChange>> childFieldChanges = new HashMap<>();
+        List<Change> mainTableChanges = new ArrayList<>();
+        Map<String, List<Change>> childFieldChanges = new HashMap<>();
         Map<String, List<ItemAddedChange>> additions = new HashMap<>();
         Map<String, List<ItemRemovedChange>> removals = new HashMap<>();
 
@@ -192,8 +193,11 @@ class OrderRepository extends DifferRepository<FullIntegrationTest.Order, FullIn
             if (childConverters.containsKey(rootField)) {
                 categorizeChildChange(change, rootField, childFieldChanges, additions, removals);
             } else {
-                if (change instanceof FieldChange fc) {
-                    mainTableChanges.add(fc);
+                if (change instanceof ValueChange vc) {
+                    mainTableChanges.add(vc);
+                } else if (change instanceof ObjectFieldChange ofc) {
+                    // 对象/集合字段整体替换（跨类型变化）：ValueNode 承载，无业务值
+                    mainTableChanges.add(ofc);
                 }
             }
         }
@@ -214,34 +218,40 @@ class OrderRepository extends DifferRepository<FullIntegrationTest.Order, FullIn
         }
 
         // 4. 处理子表字段变更
-        for (Map.Entry<String, List<FieldChange>> entry : childFieldChanges.entrySet()) {
+        for (Map.Entry<String, List<Change>> entry : childFieldChanges.entrySet()) {
             handleChildFieldChanges(root, entry.getValue());
         }
     }
 
     private void categorizeChildChange(
             Change change, String rootField,
-            Map<String, List<FieldChange>> childFieldChanges,
+            Map<String, List<Change>> childFieldChanges,
             Map<String, List<ItemAddedChange>> additions,
             Map<String, List<ItemRemovedChange>> removals) {
         switch (change) {
             case ItemAddedChange iac -> additions.computeIfAbsent(rootField, k -> new ArrayList<>()).add(iac);
             case ItemRemovedChange irc -> removals.computeIfAbsent(rootField, k -> new ArrayList<>()).add(irc);
-            case FieldChange fc -> childFieldChanges.computeIfAbsent(rootField, k -> new ArrayList<>()).add(fc);
+            case ValueChange vc -> childFieldChanges.computeIfAbsent(rootField, k -> new ArrayList<>()).add(vc);
+            case ObjectFieldChange ofc -> childFieldChanges.computeIfAbsent(rootField, k -> new ArrayList<>()).add(ofc);
             default -> {}
         }
     }
 
-    private void handleMainTableChanges(FullIntegrationTest.Order root, List<FieldChange> changes) {
+    private void handleMainTableChanges(FullIntegrationTest.Order root, List<Change> changes) {
         StringBuilder sql = new StringBuilder("UPDATE t_order SET ");
         List<Object> params = new ArrayList<>();
         int fieldCount = 0;
 
-        for (FieldChange fc : changes) {
-            String fieldName = fc.path();
+        for (Change change : changes) {
+            if (change instanceof ObjectFieldChange ofc) {
+                handleMainTableObjectFieldChange(root, ofc);
+                continue;
+            }
+            ValueChange vc = (ValueChange) change;
+            String fieldName = vc.path();
 
             if (fieldName.startsWith("customer")) {
-                handleCustomerFieldChange(root, fieldName, fc);
+                handleCustomerFieldChange(root, fieldName, vc);
                 continue;
             }
             if (fieldName.contains("[")) {
@@ -252,17 +262,17 @@ class OrderRepository extends DifferRepository<FullIntegrationTest.Order, FullIn
 
             if ("status".equals(fieldName)) {
                 sql.append("status = ?");
-                params.add(fc.newValue());
+                params.add(vc.newValue());
                 fieldCount++;
             } else if ("totalAmount".equals(fieldName)) {
                 sql.append("total_amount = ?, total_currency = ?");
-                FullIntegrationTest.Money money = (FullIntegrationTest.Money) fc.newValue();
+                FullIntegrationTest.Money money = (FullIntegrationTest.Money) vc.newValue();
                 params.add(money != null ? money.amount() : null);
                 params.add(money != null ? money.currency() : null);
                 fieldCount++;
             } else if ("orderNo".equals(fieldName)) {
                 sql.append("order_no = ?");
-                params.add(fc.newValue());
+                params.add(vc.newValue());
                 fieldCount++;
             }
         }
@@ -272,6 +282,23 @@ class OrderRepository extends DifferRepository<FullIntegrationTest.Order, FullIn
         sql.append(" WHERE id = ?");
         params.add(root.getId());
         jdbc.update(sql.toString(), params.toArray());
+    }
+
+    /**
+     * 处理主表对象/集合字段整体替换（ObjectFieldChange）。
+     * <p>
+     * newNode 为 ValueNode 表示：NullNode=清空；PrimitiveNode=值；
+     * ObjectNode/CollectionNode/ArrayNode 无法表达为单列业务值，跳过（不炸库）。
+     */
+    private void handleMainTableObjectFieldChange(FullIntegrationTest.Order root, ObjectFieldChange ofc) {
+        if (!"customer".equals(ofc.path())) {
+            return;
+        }
+        if (ofc.newNode() instanceof NullNode) {
+            // 客户整体置空：删除客户及其地址子表数据
+            jdbc.update("DELETE FROM t_address WHERE customer_id IN (SELECT id FROM t_customer WHERE order_id = ?)", root.getId());
+            jdbc.update("DELETE FROM t_customer WHERE order_id = ?", root.getId());
+        }
     }
 
     private void handleChildAdditions(FullIntegrationTest.Order root, String fieldName, List<ItemAddedChange> additions) {
@@ -363,29 +390,33 @@ class OrderRepository extends DifferRepository<FullIntegrationTest.Order, FullIn
         }
     }
 
-    private void handleChildFieldChanges(FullIntegrationTest.Order root, List<FieldChange> changes) {
-        for (FieldChange fc : changes) {
-            String path = fc.path();
+    private void handleChildFieldChanges(FullIntegrationTest.Order root, List<Change> changes) {
+        for (Change change : changes) {
+            if (!(change instanceof ValueChange vc)) {
+                // ObjectFieldChange：子表对象/集合字段整体替换，无业务值可提取，暂不处理（保持既有行为）
+                continue;
+            }
+            String path = vc.path();
             if (path.startsWith("items[")) {
-                handleOrderItemFieldChange(root, path, fc);
+                handleOrderItemFieldChange(root, path, vc);
             } else if (path.startsWith("customer.")) {
-                handleCustomerFieldChange(root, path, fc);
+                handleCustomerFieldChange(root, path, vc);
             }
         }
     }
 
-    private void handleOrderItemFieldChange(FullIntegrationTest.Order root, String path, FieldChange fc) {
+    private void handleOrderItemFieldChange(FullIntegrationTest.Order root, String path, ValueChange vc) {
         String[] parts = path.split("\\.");
         Long itemId = extractId(parts[0]);
 
         if (parts.length == 2) {
             String field = parts[1];
             if ("quantity".equals(field)) {
-                jdbc.update("UPDATE t_order_item SET quantity = ? WHERE id = ?", fc.newValue(), itemId);
+                jdbc.update("UPDATE t_order_item SET quantity = ? WHERE id = ?", vc.newValue(), itemId);
             } else if ("productName".equals(field)) {
-                jdbc.update("UPDATE t_order_item SET product_name = ? WHERE id = ?", fc.newValue(), itemId);
+                jdbc.update("UPDATE t_order_item SET product_name = ? WHERE id = ?", vc.newValue(), itemId);
             } else if ("unitPrice".equals(field)) {
-                FullIntegrationTest.Money money = (FullIntegrationTest.Money) fc.newValue();
+                FullIntegrationTest.Money money = (FullIntegrationTest.Money) vc.newValue();
                 jdbc.update("UPDATE t_order_item SET unit_price = ?, unit_currency = ? WHERE id = ?",
                         money.amount(), money.currency(), itemId);
             }
@@ -393,23 +424,23 @@ class OrderRepository extends DifferRepository<FullIntegrationTest.Order, FullIn
             Long subItemId = extractId(parts[1]);
             if (parts.length == 3) {
                 if ("name".equals(parts[2])) {
-                    jdbc.update("UPDATE t_sub_item SET name = ? WHERE id = ?", fc.newValue(), subItemId);
+                    jdbc.update("UPDATE t_sub_item SET name = ? WHERE id = ?", vc.newValue(), subItemId);
                 }
             } else if (parts.length == 4 && parts[2].startsWith("specs[")) {
                 String specKey = extractStringId(parts[2]);
                 if ("value".equals(parts[3])) {
                     jdbc.update("UPDATE t_spec SET spec_value = ? WHERE sub_item_id = ? AND spec_key = ?",
-                            fc.newValue(), subItemId, specKey);
+                            vc.newValue(), subItemId, specKey);
                 }
             }
         }
     }
 
-    private void handleCustomerFieldChange(FullIntegrationTest.Order root, String path, FieldChange fc) {
+    private void handleCustomerFieldChange(FullIntegrationTest.Order root, String path, ValueChange vc) {
         if ("customer.name".equals(path)) {
-            jdbc.update("UPDATE t_customer SET name = ? WHERE order_id = ?", fc.newValue(), root.getId());
+            jdbc.update("UPDATE t_customer SET name = ? WHERE order_id = ?", vc.newValue(), root.getId());
         } else if (path.startsWith("customer.contact")) {
-            FullIntegrationTest.ContactInfo contact = (FullIntegrationTest.ContactInfo) fc.newValue();
+            FullIntegrationTest.ContactInfo contact = (FullIntegrationTest.ContactInfo) vc.newValue();
             jdbc.update("UPDATE t_customer SET contact_phone = ?, contact_email = ? WHERE order_id = ?",
                     contact != null ? contact.phone() : null,
                     contact != null ? contact.email() : null,
@@ -418,7 +449,7 @@ class OrderRepository extends DifferRepository<FullIntegrationTest.Order, FullIn
             String[] parts = path.split("\\.");
             Long addressId = extractId(parts[1]);
             if ("city".equals(parts[2])) {
-                jdbc.update("UPDATE t_address SET city = ? WHERE id = ?", fc.newValue(), addressId);
+                jdbc.update("UPDATE t_address SET city = ? WHERE id = ?", vc.newValue(), addressId);
             }
         }
     }

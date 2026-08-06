@@ -1,6 +1,6 @@
 package com.nona.inf.persistence.tracking;
 
-import com.nona.changeTracking.domain.model.unitofwork.UnitOfWork;
+import com.nona.changeTracking.domain.model.tracking.ChangeTracker;
 import com.nona.changeTracking.spi.TrackingCapabilityProvider;
 import lombok.extern.slf4j.Slf4j;
 
@@ -9,16 +9,16 @@ import java.util.function.Function;
 import com.nona.annotation.ScaffoldGenerated;
 
 /**
- * UnitOfWork 提供者
+ * ChangeTracker 提供者
  * <p>
- * 根据 {@link ChangeTrackingProperties} 配置创建 {@link UnitOfWork} 实例。
- * 每次调用 {@link #create()} 返回一个新的 UnitOfWork 实例。
+ * 根据 {@link ChangeTrackingProperties} 配置创建 {@link ChangeTracker} 实例。
+ * 每次调用 {@link #create()} 返回一个新的 ChangeTracker 实例。
  * <p>
  * 该类封装了 change-tracking 库的配置细节，对外提供简单的工厂方法。
  */
 @Slf4j
 @ScaffoldGenerated
-public class UnitOfWorkProvider {
+public class ChangeTrackerProvider {
 
     private static final String DEFAULT_CAPABILITY_NAME = "default-reflection";
 
@@ -37,7 +37,7 @@ public class UnitOfWorkProvider {
      *
      * @param properties 配置属性
      */
-    public UnitOfWorkProvider(ChangeTrackingProperties properties) {
+    public ChangeTrackerProvider(ChangeTrackingProperties properties) {
         Objects.requireNonNull(properties, "properties cannot be null");
 
         IdentifierExtractorBuilder builder = new IdentifierExtractorBuilder(properties);
@@ -54,14 +54,14 @@ public class UnitOfWorkProvider {
      * @param valueTypes    值类型集合
      * @param valuePackages 值类型包集合
      */
-    public UnitOfWorkProvider(
+    public ChangeTrackerProvider(
             Map<Class<?>, Function<Object, Object>> extractors,
             Set<Class<?>> valueTypes,
             Set<String> valuePackages) {
         this(null, extractors, valueTypes, valuePackages);
     }
 
-    private UnitOfWorkProvider(
+    private ChangeTrackerProvider(
             String capabilityName,
             Map<Class<?>, Function<Object, Object>> extractors,
             Set<Class<?>> valueTypes,
@@ -73,13 +73,13 @@ public class UnitOfWorkProvider {
     }
 
     /**
-     * 创建新的 UnitOfWork 实例
+     * 创建新的 ChangeTracker 实例
      * <p>
      * 每次调用返回一个独立的实例，适用于请求级别的生命周期管理。
      *
-     * @return 配置好的 UnitOfWork 实例
+     * @return 配置好的 ChangeTracker 实例
      */
-    public UnitOfWork create() {
+    public ChangeTracker create() {
         if (providerClass == null) {
             synchronized (this) {
                 if (providerClass == null) {
@@ -102,7 +102,7 @@ public class UnitOfWorkProvider {
             provider.withValuePackage(packageName);
         }
 
-        return new UnitOfWork(provider.create());
+        return new ChangeTracker(provider.create());
     }
 
     /**
@@ -319,8 +319,8 @@ public class UnitOfWorkProvider {
         /**
          * 构建提供者
          */
-        public UnitOfWorkProvider build() {
-            return new UnitOfWorkProvider(capabilityName, extractors, valueTypes, valuePackages);
+        public ChangeTrackerProvider build() {
+            return new ChangeTrackerProvider(capabilityName, extractors, valueTypes, valuePackages);
         }
     }
 }

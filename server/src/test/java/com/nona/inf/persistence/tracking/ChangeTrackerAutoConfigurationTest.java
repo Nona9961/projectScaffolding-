@@ -6,10 +6,10 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.nona.annotation.ScaffoldGenerated;
 
 /**
- * UnitOfWork自动配置测试
+ * ChangeTracker自动配置测试
  */
 @ScaffoldGenerated
-class UnitOfWorkAutoConfigurationTest {
+class ChangeTrackerAutoConfigurationTest {
 
     /**
      * 场景1：用户未定义Bean时自动创建
@@ -20,8 +20,8 @@ class UnitOfWorkAutoConfigurationTest {
         props.setDefaultIdentifier("id");
         props.getValueTypePackages().add("com.example.vo");
 
-        final UnitOfWorkAutoConfiguration config = new UnitOfWorkAutoConfiguration();
-        final UnitOfWorkProvider provider = config.unitOfWorkProvider(props);
+        final ChangeTrackerAutoConfiguration config = new ChangeTrackerAutoConfiguration();
+        final ChangeTrackerProvider provider = config.changeTrackerProvider(props);
 
         assertNotNull(provider);
     }
@@ -35,8 +35,8 @@ class UnitOfWorkAutoConfigurationTest {
         props.setDefaultIdentifier("id");
         props.getValueTypePackages().add("com.example.vo");
 
-        final UnitOfWorkAutoConfiguration config = new UnitOfWorkAutoConfiguration();
-        final UnitOfWorkProvider provider = config.unitOfWorkProvider(props);
+        final ChangeTrackerAutoConfiguration config = new ChangeTrackerAutoConfiguration();
+        final ChangeTrackerProvider provider = config.changeTrackerProvider(props);
 
         assertTrue(provider.getValuePackages().contains("com.example.vo"));
     }

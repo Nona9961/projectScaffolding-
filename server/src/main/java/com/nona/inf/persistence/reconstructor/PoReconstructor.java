@@ -1,7 +1,7 @@
 package com.nona.inf.persistence.reconstructor;
 
+import com.nona.changeTracking.domain.model.changeset.Change;
 import com.nona.changeTracking.domain.model.changeset.ChangeSet;
-import com.nona.changeTracking.domain.model.changeset.FieldChange;
 import com.nona.changeTracking.domain.model.changeset.ItemAddedChange;
 import com.nona.changeTracking.domain.model.changeset.ItemRemovedChange;
 import com.nona.changeTracking.domain.model.snapshot.ObjectNode;
@@ -139,10 +139,10 @@ public class PoReconstructor {
         return converter.toPO(domainObject);
     }
 
-    private Set<Object> extractIdentifiersFromFieldChanges(List<FieldChange> fieldChanges) {
+    private Set<Object> extractIdentifiersFromFieldChanges(List<Change> fieldChanges) {
         final Set<Object> identifiers = new HashSet<>();
-        for (final FieldChange fc : fieldChanges) {
-            final Matcher matcher = IDENTIFIER_PATTERN.matcher(fc.fullPath());
+        for (final Change change : fieldChanges) {
+            final Matcher matcher = IDENTIFIER_PATTERN.matcher(change.fullPath());
             if (matcher.find()) {
                 final String idStr = matcher.group(1);
                 try {

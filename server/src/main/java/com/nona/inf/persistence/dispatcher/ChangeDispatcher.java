@@ -30,8 +30,11 @@ public class ChangeDispatcher {
 
             if (collectionField != null && converters.containsKey(collectionField)) {
                 categorizeChildChange(change, collectionField, result);
-            } else if (change instanceof FieldChange fc) {
-                result.addMainTableChange(fc);
+            } else if (change instanceof ValueChange vc) {
+                result.addMainTableChange(vc);
+            } else if (change instanceof ObjectFieldChange ofc) {
+                // 对象/集合字段整体替换（跨类型变化）：ValueNode 承载，无业务值
+                result.addMainTableChange(ofc);
             }
         }
 
@@ -44,7 +47,8 @@ public class ChangeDispatcher {
         switch (change) {
             case ItemAddedChange iac -> collectionChanges.addAddition(iac);
             case ItemRemovedChange irc -> collectionChanges.addRemoval(irc);
-            case FieldChange fc -> collectionChanges.addFieldChange(fc);
+            case ValueChange vc -> collectionChanges.addFieldChange(vc);
+            case ObjectFieldChange ofc -> collectionChanges.addFieldChange(ofc);
             default -> {}
         }
     }

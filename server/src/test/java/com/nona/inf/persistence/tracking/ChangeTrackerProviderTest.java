@@ -9,10 +9,10 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.nona.annotation.ScaffoldGenerated;
 
 /**
- * UnitOfWorkProvider 单元测试
+ * ChangeTrackerProvider 单元测试
  */
 @ScaffoldGenerated
-class UnitOfWorkProviderTest {
+class ChangeTrackerProviderTest {
 
     // ========== 测试用类 ==========
 
@@ -25,7 +25,7 @@ class UnitOfWorkProviderTest {
 
     @Test
     void shouldBuildWithBuilder() {
-        UnitOfWorkProvider provider = UnitOfWorkProvider.builder()
+        ChangeTrackerProvider provider = ChangeTrackerProvider.builder()
                 .withIdentifier(TestEntity.class, e -> e.id)
                 .withValuePackage("com.example.vo")
                 .build();
@@ -39,7 +39,7 @@ class UnitOfWorkProviderTest {
 
     @Test
     void shouldRegisterIdentifierExtractor() {
-        UnitOfWorkProvider provider = UnitOfWorkProvider.builder()
+        ChangeTrackerProvider provider = ChangeTrackerProvider.builder()
                 .withIdentifier(TestEntity.class, e -> e.id)
                 .build();
 
@@ -54,7 +54,7 @@ class UnitOfWorkProviderTest {
 
     @Test
     void shouldRegisterValueType() {
-        UnitOfWorkProvider provider = UnitOfWorkProvider.builder()
+        ChangeTrackerProvider provider = ChangeTrackerProvider.builder()
                 .withValueType(String.class)
                 .build();
 
@@ -65,7 +65,7 @@ class UnitOfWorkProviderTest {
 
     @Test
     void shouldReturnUnmodifiableExtractors() {
-        UnitOfWorkProvider provider = UnitOfWorkProvider.builder().build();
+        ChangeTrackerProvider provider = ChangeTrackerProvider.builder().build();
 
         assertThrows(UnsupportedOperationException.class, () ->
                 provider.getExtractors().put(Object.class, o -> o));
@@ -73,7 +73,7 @@ class UnitOfWorkProviderTest {
 
     @Test
     void shouldReturnUnmodifiableValueTypes() {
-        UnitOfWorkProvider provider = UnitOfWorkProvider.builder().build();
+        ChangeTrackerProvider provider = ChangeTrackerProvider.builder().build();
 
         assertThrows(UnsupportedOperationException.class, () ->
                 provider.getValueTypes().add(String.class));
@@ -81,7 +81,7 @@ class UnitOfWorkProviderTest {
 
     @Test
     void shouldReturnUnmodifiableValuePackages() {
-        UnitOfWorkProvider provider = UnitOfWorkProvider.builder().build();
+        ChangeTrackerProvider provider = ChangeTrackerProvider.builder().build();
 
         assertThrows(UnsupportedOperationException.class, () ->
                 provider.getValuePackages().add("com.example"));

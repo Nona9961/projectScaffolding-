@@ -2,11 +2,11 @@ package com.nona.inf.persistence.repository;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.nona.changeTracking.domain.model.changeset.ChangeSet;
-import com.nona.changeTracking.domain.model.unitofwork.UnitOfWork;
+import com.nona.changeTracking.domain.model.tracking.ChangeTracker;
 import com.nona.inf.context.ThreadContext;
 import com.nona.inf.persistence.converters.RdbGeneralConvertor;
 import com.nona.inf.persistence.po.BasePO;
-import com.nona.inf.persistence.tracking.UnitOfWorkProvider;
+import com.nona.inf.persistence.tracking.ChangeTrackerProvider;
 import com.nona.persistence.BaseRepository;
 import jakarta.annotation.Nullable;
 import lombok.RequiredArgsConstructor;
@@ -17,7 +17,7 @@ import java.util.Optional;
 import com.nona.annotation.ScaffoldGenerated;
 
 /**
- * 支持基于diff的仓储，集成 UnitOfWork 实现变更追踪
+ * 支持基于diff的仓储，集成 ChangeTracker 实现变更追踪
  *
  * @param <Root>  聚合根
  * @param <PO>    PO对象
@@ -28,12 +28,12 @@ import com.nona.annotation.ScaffoldGenerated;
 @ScaffoldGenerated
 public abstract class DifferRepository<Root, PO extends BasePO, Other> implements BaseRepository<Long, Root> {
 
-    private static final String UOW_KEY = "UNIT_OF_WORK";
+    private static final String TRACKER_KEY = "CHANGE_TRACKER";
 
     protected final ListCrudRepository<PO, Long> repository;
     protected final ThreadContext threadContext;
     protected final RdbGeneralConvertor<Root, PO, Other> convertor;
-    protected final UnitOfWorkProvider unitOfWorkProvider;
+    protected final ChangeTrackerProvider changeTrackerProvider;
 
     private final TypeReference<Root> rootType = new TypeReference<>() {};
 
@@ -49,7 +49,7 @@ public abstract class DifferRepository<Root, PO extends BasePO, Other> implement
             return null;
         }
 
-        getOrCreateUnitOfWork().registerClean(root);
+        getOrCreateChangeTracker().track(root);
         threadContext.saveSnapshot(id, root);
         return root;
     }
@@ -95,23 +95,23 @@ public abstract class DifferRepository<Root, PO extends BasePO, Other> implement
     public boolean save(Root root) {
         Objects.requireNonNull(root);
         final Long id = retrieveIDFromRoot(root);
-        final UnitOfWork uow = getOrCreateUnitOfWork();
+        final ChangeTracker changeTracker = getOrCreateChangeTracker();
 
         if (!isTracked(id)) {
             doInsert(root);
-            uow.registerClean(root);
+            changeTracker.track(root);
             threadContext.saveSnapshot(id, root);
             return true;
         }
 
-        final ChangeSet changeSet = uow.calculateChanges();
+        final ChangeSet changeSet = changeTracker.calculateChanges();
         if (changeSet.isEmpty()) {
             return false;
         }
 
         doUpdate(root, changeSet);
 
-        uow.registerClean(root);
+        changeTracker.track(root);
         threadContext.saveSnapshot(id, root);
         return true;
     }
@@ -134,15 +134,15 @@ public abstract class DifferRepository<Root, PO extends BasePO, Other> implement
     }
 
     /**
-     * 获取或创建 UnitOfWork（请求级别单例）
+     * 获取或创建 ChangeTracker（请求级别单例）
      */
-    protected UnitOfWork getOrCreateUnitOfWork() {
-        UnitOfWork uow = threadContext.getAttribute(UOW_KEY);
-        if (uow == null) {
-            final UnitOfWork newUow = unitOfWorkProvider.create();
-            uow = newUow;
-            threadContext.setAttribute(UOW_KEY, newUow);
+    protected ChangeTracker getOrCreateChangeTracker() {
+        ChangeTracker changeTracker = threadContext.getAttribute(TRACKER_KEY);
+        if (changeTracker == null) {
+            final ChangeTracker newTracker = changeTrackerProvider.create();
+            changeTracker = newTracker;
+            threadContext.setAttribute(TRACKER_KEY, newTracker);
         }
-        return uow;
+        return changeTracker;
     }
 }
