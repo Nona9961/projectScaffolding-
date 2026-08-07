@@ -20,8 +20,14 @@ import com.nona.annotation.ScaffoldGenerated;
 @ScaffoldGenerated
 public class ThreadContextTenantIdentifierResolver implements CurrentTenantIdentifierResolver<String> {
 
+    /**
+     * 根租户 ID：cross-tenant 模式下返回该值以绕过 discriminator 过滤
+     */
     public static final String ROOT_TENANT_ID = "__ROOT_TENANT__";
 
+    /**
+     * 租户上下文访问器（两级优先级：请求作用域 → 线程回退）
+     */
     private final TenantContextAccessor tenantContextAccessor;
 
     /**

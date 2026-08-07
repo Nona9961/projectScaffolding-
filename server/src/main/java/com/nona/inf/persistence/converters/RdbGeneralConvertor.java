@@ -16,11 +16,34 @@ import com.nona.annotation.ScaffoldGenerated;
 @ScaffoldGenerated
 public interface RdbGeneralConvertor<Root, PO, Other> {
 
+    /**
+     * 获取聚合根类型。
+     *
+     * @return 聚合根类型
+     */
     Class<Root> rootClass();
 
+    /**
+     * 获取 PO 类型。
+     *
+     * @return PO 类型
+     */
     Class<PO> poClass();
 
+    /**
+     * 聚合根转 PO。
+     *
+     * @param root 聚合根
+     * @return PO 对象
+     */
     PO convertToPO(Root root);
 
+    /**
+     * PO 转聚合根。
+     *
+     * @param po    PO 对象
+     * @param other 聚合的其他信息；可能为 null
+     * @return 聚合根
+     */
     Root convertToRoot(PO po, @Nullable Other other);
 }

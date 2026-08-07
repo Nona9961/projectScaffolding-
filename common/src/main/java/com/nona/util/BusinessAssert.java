@@ -15,11 +15,23 @@ import com.nona.annotation.ScaffoldGenerated;
 @Slf4j
 @ScaffoldGenerated
 public class BusinessAssert {
+
+    /**
+     * 私有构造器，禁止实例化。
+     *
+     * @throws IllegalAccessException 总是抛出
+     */
     private BusinessAssert() throws IllegalAccessException {
         throw new IllegalAccessException();
     }
 
-
+    /**
+     * 断言对象非空，否则抛出业务异常。
+     *
+     * @param object  待校验对象
+     * @param message 异常信息模板，支持{}占位符格式
+     * @param args    用于格式化消息模板的参数列表
+     */
     public static void assertNonNull(Object object, String message, Object... args) {
         assertTrue(Objects.nonNull(object), message, args);
     }
@@ -47,6 +59,13 @@ public class BusinessAssert {
         throw generateExByMsg(message, args);
     }
 
+    /**
+     * 生成业务异常，支持使用占位符{}动态修改消息。
+     *
+     * @param message 异常信息模板，支持{}占位符格式
+     * @param args    用于格式化消息模板的参数列表
+     * @return 构造好的业务异常
+     */
     public static BusinessException generateExByMsg(String message, Object... args) {
         if (ArrayUtils.isNotEmpty(args)) {
             message = MessageFormatter.arrayFormat(message, args).getMessage();

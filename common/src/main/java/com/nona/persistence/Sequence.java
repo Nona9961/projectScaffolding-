@@ -75,12 +75,20 @@ public class Sequence {
     protected final long maxWorkerId = ~(-1L << workerIdBits);
 
     private final long workerIdShift = sequenceBits;
+
+    /**
+     * 机房 ID 左移位数
+     */
     private final long datacenterIdShift = sequenceBits + workerIdBits;
 
     /**
      * 时间戳左移动位
      */
     private final long timestampLeftShift = sequenceBits + workerIdBits + datacenterIdBits;
+
+    /**
+     * 序列号掩码，用于截取序列位
+     */
     private final long sequenceMask = ~(-1L << sequenceBits);
 
     /**
@@ -102,8 +110,15 @@ public class Sequence {
     private long lastTimestamp = -1L;
 
     private static volatile InetAddress LOCAL_ADDRESS = null;
+
+    /**
+     * 合法 IP 地址格式校验
+     */
     private static final Pattern IP_PATTERN = Pattern.compile("\\d{1,3}(\\.\\d{1,3}){3,5}$");
 
+    /**
+     * 默认构造器：基于本机网卡与进程信息自动推导数据中心 ID 与机器 ID。
+     */
     public Sequence() {
         this.datacenterId = getDatacenterId();
         this.workerId = getMaxWorkerId(datacenterId);
@@ -209,6 +224,12 @@ public class Sequence {
                 | sequence;
     }
 
+    /**
+     * 等待直到下一个毫秒（处理同毫秒序列耗尽）。
+     *
+     * @param lastTimestamp 上次生成 ID 的时间戳
+     * @return 大于 lastTimestamp 的新时间戳
+     */
     protected long tilNextMillis(long lastTimestamp) {
         long timestamp = timeGen();
         while (timestamp <= lastTimestamp) {
@@ -218,6 +239,11 @@ public class Sequence {
         return timestamp;
     }
 
+    /**
+     * 获取当前时间戳（毫秒）。
+     *
+     * @return 当前时间戳
+     */
     protected long timeGen() {
         return SystemClock.INSTANCE.currentTimeMillis();
     }
@@ -226,6 +252,11 @@ public class Sequence {
      * Find first valid IP from local network card
      *
      * @return first valid local IP
+     */
+    /**
+     * 查找本机第一个合法 IP（带缓存）。
+     *
+     * @return 本机合法 IP；未找到时返回 null
      */
     public static InetAddress getLocalAddress() {
         if (LOCAL_ADDRESS != null) {
@@ -236,6 +267,11 @@ public class Sequence {
         return LOCAL_ADDRESS;
     }
 
+    /**
+     * 无缓存地查找本机合法 IP（先取 localhost，再遍历网卡）。
+     *
+     * @return 本机合法 IP；未找到时返回 null
+     */
     private static InetAddress getLocalAddress0() {
         InetAddress localAddress = null;
         try {
@@ -275,6 +311,12 @@ public class Sequence {
         return localAddress;
     }
 
+    /**
+     * 校验地址是否为合法且非回环的 IPv4 地址。
+     *
+     * @param address 待校验地址
+     * @return 合法返回 true
+     */
     private static boolean isValidAddress(InetAddress address) {
         if (address == null || address.isLoopbackAddress()) {
             return false;

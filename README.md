@@ -1,6 +1,27 @@
-﻿# Project Scaffolding
+# Project Scaffolding
 
-企业级 Java 后端脚手架，基于 DDD 架构，专注于解决 **DDD 领域模型与关系型数据库之间的阻抗失衡问题**。
+企业级 Java 后端脚手架：以 **DDD 分层骨架 + 属性级变更追踪 + 开箱即用的多租户隔离** 为核心，
+作为新项目的起点模板。基于 [changeTracking](../changeTracking/) 框架与 Spring Boot 4.1。
+
+## 动机
+
+- **DDD 落地成本高**：聚合根在内存完成业务操作后，持久化层需要精确知道「哪些属性变了」才能生成
+  准确的 UPDATE——DDD 领域模型与关系型数据库之间存在阻抗失衡。脚手架将领域分层约定、变更追踪
+  与 Repository 的集成一次性固化，新项目直接填充业务即可，无需从零搭建。
+- **多租户是共性需求且容易出错**：租户隔离一旦缺失或失效（例如异步线程池丢失请求上下文）会造成
+  数据越权。脚手架内置 fail-closed 的隔离机制与跨线程上下文传播设施，避免每个项目各自实现、各自踩坑。
+- **模板代码需要可追溯**：脚手架生成的文件与项目手写文件需要一眼可辨，Bug 修复时才能知道往
+  脚手架提 issue 还是在项目内修改。
+
+## 亮点
+
+- **DDD 分层骨架开箱即用**：聚合根 / 值对象 / 工厂 / 仓储 / ACL 分层约定固化，读写分离的实用主义调整
+- **变更追踪持久化**：集成 changeTracking，仓储层自动完成属性级变更计算与 PO 重建，业务侧只写差异逻辑
+- **多租户隔离默认安全**：fail-closed 设计（租户缺失不放行数据），跨租户访问需显式受控放行
+- **异步上下文不丢失**：线程池中租户 / 角色 / 身份上下文自动传播，异步场景租户隔离依旧有效
+- **模板标识清晰**：所有脚手架生成文件带 `@ScaffoldGenerated` 标识，模板与手写代码一目了然
+- **安全默认**：仅暴露 `health` / `info` 两个 Actuator 端点，其余端点由具体项目自行决定
+- **现代技术栈**：Java 25 虚拟线程、Spring Boot 4.1
 
 ## 快速开始
 
@@ -16,210 +37,25 @@ mvn spring-boot:run -pl server
 # H2 控制台：http://localhost:19890/h2
 ```
 
-## 核心流程
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  加载聚合根 → 注册到 ChangeTracker → 业务修改 → 计算变更 → 重建 PO → 持久化  │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## 三步快速上手
-
-### 1. 定义领域模型
-
-```java
-// 聚合根
-class Order {
-    Long id;
-    OrderStatus status;
-    List<OrderItem> items;  // 子实体
-
-    void addItem(OrderItem item) { items.add(item); }
-    void confirm() { status = CONFIRMED; }
-}
-
-// 值对象（不会被递归追踪）
-record Money(BigDecimal amount) {}
-```
-
-### 2. 配置 ChangeTracker（核心！）
-
-```java
-// 在 Repository 构造时配置
-ChangeTrackerProvider trackerProvider = ChangeTrackerProvider.builder()
-    .withIdentifier(Order.class, Order::getId)
-    .withIdentifier(OrderItem.class, OrderItem::getId)
-    .withValueType(Money.class)      // 值类型不展开追踪（必须不可变）
-    .build();
-
-// ChangeTracker 自动追踪：
-// 1. getByID() 时 track（建立快照基线）
-// 2. 修改字段时记录变更
-// 3. save() 时生成 ChangeSet
-```
-
-### 3. 实现 Repository
-
-```java
-// 继承 DifferRepository
-class OrderRepositoryImpl extends DifferRepository<Order, OrderPO, Void>
-        implements OrderRepository {
-
-    @Override
-    protected void doInsert(Order root) {
-        orderPO.save(toPO(root));           // 新增主表
-        itemPO.saveAll(toPOs(root.items));  // 新增子表
-    }
-
-    @Override
-    protected void doUpdate(Order root, ChangeSet changeSet) {
-        ReconstructedPos pos = reconstructor.reconstruct(root, changeSet);
-
-        orderPO.saveAll(pos.getToSave(OrderPO.class));           // 主表
-        itemPO.saveAll(pos.getToSave(OrderItemPO.class));        // 子表新增+更新
-        itemPO.deleteAllById(pos.getToDeleteIds(OrderItemPO.class)); // 子表删除
-    }
-}
-```
-
-## 配置说明
-
-### 配置文件（application.yml）
-
-```yaml
-change-tracking:
-  default-identifier: id              # 默认标识字段
-  value-type-packages:                # 值类型包
-    - com.nona.domain.order.vo
-  value-types:                        # 值类型类
-    - com.nona.domain.common.Money
-```
-
-### 标识符配置优先级
-
-```
-方法配置 > 字段覆盖 > 默认字段
-```
-
-## 可观测性基线（Actuator）
-
-- 脚手架默认集成 `spring-boot-starter-actuator`。
-- 默认仅通过 management web exposure 暴露 `health` 和 `info` 两个端点。
-- 本脚手架不会在默认配置中额外暴露 `env`、`metrics`、`prometheus` 等其它 management 端点。
-- Actuator 端点是否可被访问、如何鉴权与授权，仍由具体项目自行配置；当前脚手架不内置放行规则或独立安全策略。
-
-## 多租户（Multi-tenancy）
-
-### 数据分类（Global vs Tenant-scoped）
-
-| 类型 | tenant_id | 说明 | 示例 |
-|------|-----------|------|------|
-| Global / System-level | 无 | 跨租户共享的身份/元数据 | User, Credential, Tenant |
-| Tenant-scoped | 必须 | 租户内隔离的数据 | Order, Department, RoleAssignment |
-
-### PO 基类选择（BasePO vs TenantScopedBasePO）
-
-- **Global / System-level**：继承 `BasePO`（不含 `tenant_id`）
-- **Tenant-scoped**：继承 `TenantScopedBasePO`（含 `tenant_id` + `@TenantId`）
-
-### 运行时规则（fail-closed）
-
-- tenantID 来源：`ThreadContext.tenantID`
-- Hibernate 通过 `CurrentTenantIdentifierResolver`（`ThreadContextTenantIdentifierResolver`）读取 tenantID 并注入隔离条件
-- 当 tenantID 缺失时，返回 `__MISSING_TENANT__` 以实现 fail-closed（tenant-scoped 查询默认返回空）
-- tenant-scoped 写入在 tenant 缺失时会直接失败（见 `TenantRepositoryAspect`）
-
-### `@CrossTenant`（受控放行）
-
-跨租户查询/写必须显式标注 `@CrossTenant`（或等价机制），默认路径仍走 tenant 隔离。
-
-```java
-@CrossTenant
-public List<OrderPO> listAllTenantsOrders() {
-    return orderJpaRepository.findAll();
-}
-```
-
-注意事项：
-- `@CrossTenant` 仅用于平台级后台/运维/迁移等场景
-- cross-tenant 写入必须显式指定 `tenant_id`
-- 每次新增 `@CrossTenant` 必须 code review 强审，避免数据泄露
-
-### 脚手架标识（`@ScaffoldGenerated`）
-
-所有模板生成的文件均标注 `@ScaffoldGenerated` 注解（`@Target(TYPE)`，`@Retention(SOURCE)`），位于 `common` 模块。
-
-```java
-@ScaffoldGenerated
-public class TenantContextAccessor { ... }
-```
-
-- **不参与编译产物**：`SOURCE` 保留策略，javac 编译后丢弃，零运行时开销
-- **区分模板 vs 手写**：一眼判断文件来源，Bug 修复时知道往脚手架提 issue 还是项目内改
-- **下游项目**：生成后保留注解；手写文件不加注解即可自动区分
-
-### 异步上下文传播（`RequestContextPropagatingTaskDecorator`）
-
-异步线程池中 `@RequestScope` 的 `ThreadContext`（tenantID / role / identity）会丢失。
-
-`RequestContextPropagatingTaskDecorator` 在任务提交时快照 ThreadContext，worker 线程通过 `TenantContextAccessor` 的 ThreadLocal fallback 恢复：
-
-```java
-ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-executor.setTaskDecorator(new RequestContextPropagatingTaskDecorator(tenantContextAccessor));
-executor.initialize();
-```
-
-- **不自动注册**：下游项目手动绑定到各自的 `ThreadPoolTaskExecutor`
-- **不传播事务/连接**：只传播 RequestContext，事务边界由下游自行管理
-
-## 技术栈
+### 技术栈
 
 | 技术 | 版本 | 用途 |
 |------|------|------|
-| Java | 21 | 虚拟线程 |
-| Spring Boot | 4.0.3 | 应用框架 |
-| Spring Data JPA | 4.0.3 | ORM |
-| Log4j2 | 2.24.3 | 异步日志 |
+| Java | 25 | 虚拟线程 |
+| Spring Boot | 4.1.0 | 应用框架 |
+| Spring Data JPA | Spring Boot BOM 管理 | ORM |
+| Log4j2 | 2.26.1 | 异步日志 |
 
-## 模块结构
+> 关键约定（标识符配置、租户规则、变更追踪配置等）见下方文档导航，不再于此重复。
 
-```
-projectScaffolding/
-├── common/     # 公共模块（工具、事件、ID生成）
-├── api/        # 接口模块（DTO、API定义）
-└── server/     # 主应用（DDD领域模型、持久化）
-```
+## 文档导航
 
-## changeTracking 同步说明
-
-脚手架依赖 changeTracking（`change-tracking-api` 1.0-SNAPSHOT），2026-08-06 完成一轮 breaking 同步（对应任务 `ct-review-fix`）：
-
-| changeTracking 变更 | 脚手架同步情况 |
-|---|---|
-| `UnitOfWork` → `ChangeTracker`（包 `domain.model.tracking`）；`registerClean/New/Removed` → `track`/`excludeNew`/`excludeRemoved`；`UnitOfWorkFactory` → `ChangeTrackerFactory` | 已同步：`ChangeTrackerProvider` / `ChangeTrackerAutoConfiguration` / `DifferRepository` 全链路改名 |
-| `FieldChange` → `ValueChange` + 新增 `ObjectFieldChange`（对象/集合字段整体替换，携带 ValueNode） | 已同步：`ChangeDispatcher` / `PoReconstructor` 分支改名 + 新增类型处理（`newNode()` 为 `NullNode`=清空、`ObjectNode`=赋值） |
-| 快照节点只读 API（`ObjectNode.fields()` / `CollectionNode.items()` 移除） | 零代码改动（grep 验证无调用方） |
-| `SnapshotStrategy<S>` 泛型参数化 | 零代码改动（消费方不实现 SPI） |
-
-对应的 API 变化 issue：`backend/issues/008`（A4 快照不可变）、`009`（A1 变更模型拆分）、`010`（A5 泛型收紧）、`011`（A7 改名）。
-
-行为变化提示：
-- 对象字段从对象降级为 null（或反之、集合↔对象等跨类型变化）不再产生 `ValueChange`，而是 `ObjectFieldChange`——按 `newNode()` 的 ValueNode 类型判断新状态
-- 数组按值语义比较（顺序敏感，`{1,2,3}` ≠ `{3,2,1}`）；`byte[]`/`String[]` 等值类型数组快照为 `ArrayNode`
-- `calculateChanges()` 是幂等视图（无副作用，重复调用返回相同变更集），推进基线需重新 `track()`（`DifferRepository` 保存后已自动重新登记）
-
-## 项目状态
-
-**已完成**
-- [x] DDD 领域模型框架
-- [x] 变更追踪与差异持久化
-- [x] PoReconstructor 自动重建 PO
-- [x] 事件驱动架构
-- [x] 分布式 ID 生成
+| 文档 | 内容 |
+|------|------|
+| [领域文档](domain.md) | 领域概念、建模决策与边界（多租户模型、变更追踪集成、DDD 分层） |
+| [结构文档](structure.md) | 模块划分、包结构与依赖方向（代码地图） |
+| [规范与决策](../.trellis/spec/projectScaffolding/backend/index.md) | 机制细节、契约与决策记录（上下文传播、数据库规范、错误处理、日志） |
 
 ## 许可证
 
 MIT
-

@@ -23,25 +23,45 @@ import com.nona.annotation.ScaffoldGenerated;
 @ScaffoldGenerated
 public class ConverterRegistry {
 
+    /**
+     * 简单转换器注册表（key: 领域类）
+     */
     private final Map<Class<?>, PoConverter<?, ?>> simpleConverters = new ConcurrentHashMap<>();
+
+    /**
+     * 组合转换器注册表（key: 聚合根类）
+     */
     private final Map<Class<?>, CompositePoConverter<?, ?>> compositeConverters = new ConcurrentHashMap<>();
 
     /**
-     * 注册简单转换器
+     * 注册简单转换器。
+     *
+     * @param converter 简单转换器
+     * @param <DO>      领域对象类型
+     * @param <PO>      持久化对象类型
      */
     public <DO, PO> void register(PoConverter<DO, PO> converter) {
         simpleConverters.put(converter.domainClass(), converter);
     }
 
     /**
-     * 注册组合转换器
+     * 注册组合转换器。
+     *
+     * @param converter 组合转换器
+     * @param <Root>    聚合根类型
+     * @param <MainPO>  主表 PO 类型
      */
     public <Root, MainPO extends BasePO> void register(CompositePoConverter<Root, MainPO> converter) {
         compositeConverters.put(converter.rootClass(), converter);
     }
 
     /**
-     * 获取简单转换器
+     * 获取简单转换器。
+     *
+     * @param domainClass 领域类
+     * @return 匹配的转换器；未注册时为空
+     * @param <DO> 领域对象类型
+     * @param <PO> 持久化对象类型
      */
     @SuppressWarnings("unchecked")
     public <DO, PO> Optional<PoConverter<DO, PO>> getConverter(Class<DO> domainClass) {
@@ -49,7 +69,12 @@ public class ConverterRegistry {
     }
 
     /**
-     * 获取组合转换器
+     * 获取组合转换器。
+     *
+     * @param rootClass 聚合根类
+     * @return 匹配的组合转换器；未注册时为空
+     * @param <Root>   聚合根类型
+     * @param <MainPO> 主表 PO 类型
      */
     @SuppressWarnings("unchecked")
     public <Root, MainPO extends BasePO> Optional<CompositePoConverter<Root, MainPO>>
@@ -94,7 +119,10 @@ public class ConverterRegistry {
     }
 
     /**
-     * 递归扫描类的字段，建立字段名到转换器的映射
+     * 递归扫描类的字段，建立字段名到转换器的映射。
+     *
+     * @param clazz  目标类
+     * @param result 输出映射（字段名 → 转换器）
      */
     private void scanFieldsRecursively(Class<?> clazz, Map<String, PoConverter<?, ?>> result) {
         for (final Field field : getAllFields(clazz)) {
@@ -127,7 +155,10 @@ public class ConverterRegistry {
     }
 
     /**
-     * 获取类的所有字段（包括父类）
+     * 获取类的所有字段（包括父类）。
+     *
+     * @param clazz 目标类
+     * @return 字段列表
      */
     private List<Field> getAllFields(Class<?> clazz) {
         final List<Field> fields = new ArrayList<>();
@@ -140,10 +171,10 @@ public class ConverterRegistry {
     }
 
     /**
-     * 提取字段的元素类型
-     * <p>
-     * - Collection&lt;T&gt; → T
-     * - 单个对象 → 字段类型
+     * 提取字段的元素类型。
+     *
+     * @param field 字段
+     * @return 元素类型；无法识别时返回 null
      */
     private Class<?> extractElementType(Field field) {
         Class<?> fieldType = field.getType();

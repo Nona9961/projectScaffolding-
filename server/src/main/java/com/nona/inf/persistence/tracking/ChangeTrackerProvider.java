@@ -20,11 +20,29 @@ import com.nona.annotation.ScaffoldGenerated;
 @ScaffoldGenerated
 public class ChangeTrackerProvider {
 
+    /**
+     * 默认追踪能力名称（change-tracking 的反射默认实现）
+     */
     private static final String DEFAULT_CAPABILITY_NAME = "default-reflection";
 
+    /**
+     * 标识符提取器映射（类 → 提取函数）
+     */
     private final Map<Class<?>, Function<Object, Object>> extractors;
+
+    /**
+     * 值类型集合
+     */
     private final Set<Class<?>> valueTypes;
+
+    /**
+     * 值类型包集合
+     */
     private final Set<String> valuePackages;
+
+    /**
+     * 指定的追踪能力名称（可为 null，表示默认选择策略）
+     */
     private final String capabilityName;
 
     /**
@@ -61,6 +79,14 @@ public class ChangeTrackerProvider {
         this(null, extractors, valueTypes, valuePackages);
     }
 
+    /**
+     * 完整配置构造器（Builder 内部使用）：复制输入集合以保持内部状态隔离。
+     *
+     * @param capabilityName 指定的能力名称；可为 null
+     * @param extractors     标识符提取器映射
+     * @param valueTypes     值类型集合
+     * @param valuePackages  值类型包集合
+     */
     private ChangeTrackerProvider(
             String capabilityName,
             Map<Class<?>, Function<Object, Object>> extractors,
@@ -140,6 +166,15 @@ public class ChangeTrackerProvider {
         return providerClass;
     }
 
+    /**
+     * 按配置与可用能力选择最终使用的能力名称。
+     *
+     * @param configuredCapabilityName 配置的能力名称；可为 null
+     * @param availableNames           可用能力名称集合
+     * @return 选中的能力名称
+     * @throws IllegalArgumentException 配置的能力不存在时抛出
+     * @throws IllegalStateException    无可用能力时抛出
+     */
     private static String selectCapabilityName(final String configuredCapabilityName, final Set<String> availableNames) {
         final String configured = normalizeCapabilityName(configuredCapabilityName);
         if (configured != null) {
@@ -161,6 +196,12 @@ public class ChangeTrackerProvider {
                 .orElseThrow(() -> new IllegalStateException("No tracking capabilities available."));
     }
 
+    /**
+     * 规范化能力名称（去空白；空串视为未配置）。
+     *
+     * @param name 原始名称
+     * @return 规范化名称；未配置时返回 null
+     */
     private static String normalizeCapabilityName(final String name) {
         if (name == null) {
             return null;
@@ -199,8 +240,10 @@ public class ChangeTrackerProvider {
     }
 
     /**
-     * 从配置解析值类型
+     * 从配置解析值类型。
      *
+     * @param properties 配置属性
+     * @return 值类型类集合
      * @throws IllegalStateException 如果配置的类不存在
      */
     private Set<Class<?>> resolveValueTypes(ChangeTrackingProperties properties) {
@@ -245,27 +288,50 @@ public class ChangeTrackerProvider {
     }
 
     /**
-     * 使用 Builder 模式创建提供者
+     * 使用 Builder 模式创建提供者。
+     *
+     * @return 新的 Builder 实例
      */
     public static Builder builder() {
         return new Builder();
     }
 
     /**
-     * Builder 类
+     * 提供者的流式构建器。
      */
     public static class Builder {
+
+        /**
+         * 标识符提取器映射
+         */
         private final Map<Class<?>, Function<Object, Object>> extractors = new HashMap<>();
+
+        /**
+         * 值类型集合
+         */
         private final Set<Class<?>> valueTypes = new HashSet<>();
+
+        /**
+         * 值类型包集合
+         */
         private final Set<String> valuePackages = new HashSet<>();
+
+        /**
+         * 指定的能力名称（可为 null）
+         */
         private String capabilityName;
 
+        /**
+         * 私有构造器，仅通过 {@link ChangeTrackerProvider#builder()} 创建。
+         */
         private Builder() {}
 
         /**
-         * 从配置属性加载
+         * 从配置属性加载提取器、值类型与能力名称。
          *
-         * @throws IllegalStateException 如果配置的类不存在
+         * @param properties 配置属性
+         * @return 当前构建器，支持链式调用
+         * @throws IllegalStateException 配置的类不存在时抛出
          */
         public Builder fromProperties(ChangeTrackingProperties properties) {
             IdentifierExtractorBuilder builder = new IdentifierExtractorBuilder(properties);
@@ -285,7 +351,10 @@ public class ChangeTrackerProvider {
         }
 
         /**
-         * 指定使用的追踪能力名称（SPI Provider 名称）
+         * 指定使用的追踪能力名称（SPI Provider 名称）。
+         *
+         * @param capabilityName 能力名称；可为 null（使用默认选择策略）
+         * @return 当前构建器，支持链式调用
          */
         public Builder capability(final String capabilityName) {
             this.capabilityName = normalizeCapabilityName(capabilityName);
@@ -293,7 +362,12 @@ public class ChangeTrackerProvider {
         }
 
         /**
-         * 添加标识符提取器
+         * 添加标识符提取器。
+         *
+         * @param clazz     目标类
+         * @param extractor 提取函数
+         * @return 当前构建器，支持链式调用
+         * @param <T> 目标类类型
          */
         public <T> Builder withIdentifier(Class<T> clazz, Function<T, Object> extractor) {
             this.extractors.put(clazz, obj -> extractor.apply((T) obj));
@@ -301,7 +375,10 @@ public class ChangeTrackerProvider {
         }
 
         /**
-         * 添加值类型
+         * 添加值类型。
+         *
+         * @param clazz 值类型类（必须不可变）
+         * @return 当前构建器，支持链式调用
          */
         public Builder withValueType(Class<?> clazz) {
             this.valueTypes.add(clazz);
@@ -309,7 +386,10 @@ public class ChangeTrackerProvider {
         }
 
         /**
-         * 添加值类型包
+         * 添加值类型包。
+         *
+         * @param packageName 值类型包名
+         * @return 当前构建器，支持链式调用
          */
         public Builder withValuePackage(String packageName) {
             this.valuePackages.add(packageName);
@@ -317,7 +397,9 @@ public class ChangeTrackerProvider {
         }
 
         /**
-         * 构建提供者
+         * 构建提供者。
+         *
+         * @return 配置好的 ChangeTrackerProvider
          */
         public ChangeTrackerProvider build() {
             return new ChangeTrackerProvider(capabilityName, extractors, valueTypes, valuePackages);

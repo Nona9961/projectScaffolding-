@@ -18,6 +18,9 @@ import com.nona.annotation.ScaffoldGenerated;
 @ScaffoldGenerated
 public abstract class TenantScopedBasePO extends BasePO {
 
+    /**
+     * 租户 ID（tenant-scoped 数据的隔离键）
+     */
     @Column(nullable = false, length = 64, name = "tenant_id")
     @TenantId
     protected String tenantID;

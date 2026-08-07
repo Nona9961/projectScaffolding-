@@ -32,9 +32,19 @@ import com.nona.annotation.ScaffoldGenerated;
 @ScaffoldGenerated
 public abstract class AbstractConvertor<Root, PO, Other> implements RdbGeneralConvertor<Root, PO, Other> {
 
+    /**
+     * Root 类型缓存（懒加载，双检锁保护）
+     */
     protected volatile Class<Root> rootClassCache;
+
+    /**
+     * PO 类型缓存（懒加载，双检锁保护）
+     */
     protected volatile Class<PO> poClassCache;
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public final Class<Root> rootClass() {
         if (rootClassCache == null) {
@@ -47,6 +57,9 @@ public abstract class AbstractConvertor<Root, PO, Other> implements RdbGeneralCo
         return rootClassCache;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public final Class<PO> poClass() {
         if (poClassCache == null) {
@@ -59,6 +72,9 @@ public abstract class AbstractConvertor<Root, PO, Other> implements RdbGeneralCo
         return poClassCache;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public final PO convertToPO(Root root) {
         if (root == null) {
@@ -67,6 +83,9 @@ public abstract class AbstractConvertor<Root, PO, Other> implements RdbGeneralCo
         return safedConvertToPO(root);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public final Root convertToRoot(PO po, @Nullable Other other) {
         if (po == null) {
@@ -75,8 +94,21 @@ public abstract class AbstractConvertor<Root, PO, Other> implements RdbGeneralCo
         return safedConvertToRoot(po, other);
     }
 
+    /**
+     * 子类实现的领域对象转 PO 逻辑（输入保证非空）。
+     *
+     * @param root 领域对象
+     * @return PO 对象
+     */
     protected abstract PO safedConvertToPO(@Nonnull Root root);
 
+    /**
+     * 子类实现的 PO 转领域对象逻辑（输入保证非空）。
+     *
+     * @param po    PO 对象
+     * @param other 其他辅助参数；可能为 null
+     * @return 领域对象
+     */
     protected abstract Root safedConvertToRoot(PO po, @Nullable Other other);
 
     /**

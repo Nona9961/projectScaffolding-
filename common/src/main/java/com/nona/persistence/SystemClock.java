@@ -20,11 +20,31 @@ public enum SystemClock {
 
     INSTANCE(1);
 
+    /**
+     * 时钟刷新周期（毫秒）
+     */
     private final long period;
+
+    /**
+     * 缓存的最新时间戳
+     */
     private final AtomicLong nowTime;
+
+    /**
+     * 是否已初始化
+     */
     private boolean started = false;
+
+    /**
+     * 定时刷新任务执行器
+     */
     private ScheduledExecutorService executorService;
 
+    /**
+     * 枚举构造器。
+     *
+     * @param period 时钟刷新周期（毫秒）
+     */
     SystemClock(long period) {
         this.period = period;
         this.nowTime = new AtomicLong(System.currentTimeMillis());

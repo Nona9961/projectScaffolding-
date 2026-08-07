@@ -18,25 +18,33 @@ import com.nona.annotation.ScaffoldGenerated;
 public interface CompositePoConverter<Root, MainPO extends BasePO> {
 
     /**
-     * 获取聚合根类型
+     * 获取聚合根类型。
+     *
+     * @return 聚合根类型
      */
     Class<Root> rootClass();
 
     /**
-     * 获取主表 PO 类型
+     * 获取主表 PO 类型。
+     *
+     * @return 主表 PO 类型
      */
     Class<MainPO> mainPoClass();
 
     /**
-     * 聚合根转主表 PO
+     * 聚合根转主表 PO。
+     *
+     * @param root 聚合根
+     * @return 主表 PO
      */
     MainPO toMainPO(Root root);
 
     /**
-     * 主表 PO + 子表数据 转聚合根
+     * 主表 PO + 子表数据 转聚合根。
      *
      * @param mainPO    主表 PO
      * @param childData 子表数据，key 为属性路径，value 为单个对象或集合
+     * @return 聚合根
      */
     Root toRoot(MainPO mainPO, Map<String, Object> childData);
 

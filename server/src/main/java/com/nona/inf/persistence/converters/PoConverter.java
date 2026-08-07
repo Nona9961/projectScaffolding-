@@ -13,22 +13,32 @@ import com.nona.annotation.ScaffoldGenerated;
 public interface PoConverter<DO, PO> {
 
     /**
-     * 获取领域对象类型
+     * 获取领域对象类型。
+     *
+     * @return 领域对象类型
      */
     Class<DO> domainClass();
 
     /**
-     * 获取持久化对象类型
+     * 获取持久化对象类型。
+     *
+     * @return 持久化对象类型
      */
     Class<PO> poClass();
 
     /**
-     * 领域对象转持久化对象
+     * 领域对象转持久化对象。
+     *
+     * @param domain 领域对象
+     * @return PO 对象
      */
     PO toPO(DO domain);
 
     /**
-     * 持久化对象转领域对象
+     * 持久化对象转领域对象。
+     *
+     * @param po PO 对象
+     * @return 领域对象
      */
     DO toDomain(PO po);
 }

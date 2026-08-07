@@ -24,10 +24,19 @@ public class TenantContextAccessor {
      */
     public static final String MISSING_TENANT_ID = "__MISSING_TENANT__";
 
+    /**
+     * ThreadContext 属性中 cross-tenant 开关的键名
+     */
     private static final String CROSS_TENANT_KEY = "CROSS_TENANT";
 
+    /**
+     * 异步线程回退存储：worker 线程经 {@link #saveSnapshot} 写入
+     */
     private static final ThreadLocal<ContextSnapshot> snapshotHolder = new ThreadLocal<>();
 
+    /**
+     * 请求作用域 ThreadContext 的懒加载提供者
+     */
     private final ObjectProvider<ThreadContext> threadContextProvider;
 
     /**
@@ -221,6 +230,10 @@ public class TenantContextAccessor {
      * Only carries the subset of {@link ThreadContext} fields that are safe and necessary
      * for async execution: tenantID, role, and identity. Attributes and root snapshots are
      * intentionally excluded because they may carry request-scoped mutable state.
+     *
+     * @param tenantID 租户 ID；可能为 null
+     * @param role     角色列表；可能为 null
+     * @param identity 请求者身份；可能为 null
      */
     public record ContextSnapshot(
             @Nullable String tenantID,

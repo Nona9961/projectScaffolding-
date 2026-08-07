@@ -2,6 +2,8 @@ package com.nona.domain.rootPackage.entity;
 import com.nona.annotation.ScaffoldGenerated;
 
 /**
+ * 业务状态枚举示例。
+ *
  * @author nona9961
  * @since 2025/3/19
  */

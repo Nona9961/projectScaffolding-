@@ -12,7 +12,20 @@ import com.nona.annotation.ScaffoldGenerated;
  */
 @ScaffoldGenerated
 public interface EventHandler<E, R> {
+
+    /**
+     * 同步处理事件。
+     *
+     * @param event 事件
+     * @return 处理结果
+     */
     R handle(Event<E> event);
 
+    /**
+     * 异步处理事件。
+     *
+     * @param event 事件
+     * @return 异步处理结果
+     */
     CompletableFuture<R> handleAsync(Event<E> event);
 }

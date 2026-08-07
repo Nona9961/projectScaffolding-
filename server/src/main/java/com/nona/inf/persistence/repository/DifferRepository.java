@@ -28,15 +28,41 @@ import com.nona.annotation.ScaffoldGenerated;
 @ScaffoldGenerated
 public abstract class DifferRepository<Root, PO extends BasePO, Other> implements BaseRepository<Long, Root> {
 
+    /**
+     * ThreadContext 属性中 ChangeTracker 的键名
+     */
     private static final String TRACKER_KEY = "CHANGE_TRACKER";
 
+    /**
+     * JPA 仓储（Spring Data）
+     */
     protected final ListCrudRepository<PO, Long> repository;
+
+    /**
+     * 请求级上下文（持有追踪器与根对象快照）
+     */
     protected final ThreadContext threadContext;
+
+    /**
+     * DO ↔ PO 转换器
+     */
     protected final RdbGeneralConvertor<Root, PO, Other> convertor;
+
+    /**
+     * ChangeTracker 提供者（创建请求级追踪器）
+     */
     protected final ChangeTrackerProvider changeTrackerProvider;
 
+    /**
+     * 根对象类型引用（快照存取用）
+     */
     private final TypeReference<Root> rootType = new TypeReference<>() {};
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * 读取成功后登记到 ChangeTracker 建立快照基线，并将根对象存入请求上下文。
+     */
     @Override
     public Root getByID(Long id) {
         final Optional<PO> poOptional = repository.findById(id);
@@ -65,6 +91,12 @@ public abstract class DifferRepository<Root, PO extends BasePO, Other> implement
         return null;
     }
 
+    /**
+     * 从聚合根提取主键 ID（子类实现）。
+     *
+     * @param root 聚合根
+     * @return 主键 ID
+     */
     protected abstract Long retrieveIDFromRoot(Root root);
 
     /**
@@ -91,6 +123,12 @@ public abstract class DifferRepository<Root, PO extends BasePO, Other> implement
      */
     protected abstract void doUpdate(Root root, ChangeSet changeSet);
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * 新增：直接插入并登记追踪；更新：计算变更集，非空才执行 {@link #doUpdate}，
+     * 完成后重新登记快照基线。
+     */
     @Override
     public boolean save(Root root) {
         Objects.requireNonNull(root);
@@ -116,18 +154,31 @@ public abstract class DifferRepository<Root, PO extends BasePO, Other> implement
         return true;
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * 当前模板未实现删除语义，返回 0。
+     */
     @Override
     public int delete(Root root) {
         return 0;
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * 当前模板未实现删除语义，返回 0。
+     */
     @Override
     public int deleteByID(Long id) {
         return 0;
     }
 
     /**
-     * 检查是否已被追踪
+     * 检查该 ID 的根对象是否已被追踪（快照是否已建立）。
+     *
+     * @param id 主键 ID
+     * @return 已追踪返回 true
      */
     private boolean isTracked(Long id) {
         return threadContext.getSnapshot(id, rootType) != null;

@@ -47,9 +47,19 @@ import com.nona.annotation.ScaffoldGenerated;
 @ScaffoldGenerated
 public class PoReconstructor {
 
+    /**
+     * 匹配路径中的集合项标识符（如 {@code items[123]} → {@code 123}）
+     */
     private static final Pattern IDENTIFIER_PATTERN = Pattern.compile("\\w+\\[(.+?)]");
 
+    /**
+     * 转换器注册中心
+     */
     private final ConverterRegistry converterRegistry;
+
+    /**
+     * 变更分发器
+     */
     private final ChangeDispatcher changeDispatcher;
 
     /**
@@ -129,16 +139,36 @@ public class PoReconstructor {
         }
     }
 
+    /**
+     * 将聚合根转换为主表 PO。
+     *
+     * @param converter 组合转换器
+     * @param root      聚合根
+     * @return 主表 PO
+     */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private Object convertToMainPO(CompositePoConverter converter, Object root) {
         return converter.toMainPO(root);
     }
 
+    /**
+     * 将子实体转换为其 PO。
+     *
+     * @param converter    转换器
+     * @param domainObject 领域对象
+     * @return PO 对象
+     */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private Object convertToPO(PoConverter converter, Object domainObject) {
         return converter.toPO(domainObject);
     }
 
+    /**
+     * 从字段变更的完整路径中提取集合项标识符集合。
+     *
+     * @param fieldChanges 字段变更列表
+     * @return 标识符集合（Long 优先，解析失败时保留字符串）
+     */
     private Set<Object> extractIdentifiersFromFieldChanges(List<Change> fieldChanges) {
         final Set<Object> identifiers = new HashSet<>();
         for (final Change change : fieldChanges) {
@@ -155,6 +185,14 @@ public class PoReconstructor {
         return identifiers;
     }
 
+    /**
+     * 从聚合根对象图中查找指定字段名与标识符匹配的子对象。
+     *
+     * @param root       聚合根
+     * @param fieldName  子表字段名
+     * @param identifier 业务标识符
+     * @return 匹配的子对象；未找到时返回 null
+     */
     private Object findChildFromRoot(Object root, String fieldName, Object identifier) {
         return findChildRecursively(root, fieldName, identifier, new HashSet<>());
     }
@@ -210,7 +248,10 @@ public class PoReconstructor {
     }
 
     /**
-     * 获取类的所有字段（包括父类）
+     * 获取类的所有字段（包括父类）。
+     *
+     * @param clazz 目标类
+     * @return 字段列表
      */
     private List<Field> getAllFields(Class<?> clazz) {
         final List<Field> fields = new ArrayList<>();
@@ -222,6 +263,13 @@ public class PoReconstructor {
         return fields;
     }
 
+    /**
+     * 在类继承链中查找字段。
+     *
+     * @param clazz     目标类
+     * @param fieldName 字段名
+     * @return 字段；不存在时返回 null
+     */
     private Field findField(Class<?> clazz, String fieldName) {
         Class<?> current = clazz;
         while (current != null && current != Object.class) {
@@ -234,6 +282,12 @@ public class PoReconstructor {
         return null;
     }
 
+    /**
+     * 提取对象的 id 字段值。
+     *
+     * @param item 对象
+     * @return id 值；无法访问时返回 null
+     */
     private Object extractIdentifier(Object item) {
         try {
             final Field idField = findField(item.getClass(), "id");

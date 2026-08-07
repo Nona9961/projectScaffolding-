@@ -66,9 +66,9 @@ public class IdentifierExtractorBuilder {
     }
 
     /**
-     * 获取默认提取器
+     * 获取默认提取器。
      * <p>
-     * 使用全局默认标识符字段名尝试提取，如果失败则回退到 identityHashCode
+     * 使用全局默认标识符字段名尝试提取，如果失败则回退到 identityHashCode。
      *
      * @return 默认提取器函数
      */
@@ -91,9 +91,9 @@ public class IdentifierExtractorBuilder {
     }
 
     /**
-     * 为特定类获取提取器
+     * 为特定类获取提取器。
      * <p>
-     * 优先级：已注册的提取器 > 默认字段 > identityHashCode
+     * 优先级：已注册的提取器 > 默认字段 > identityHashCode。
      *
      * @param extractors 已构建的提取器映射
      * @param clazz      目标类
@@ -122,7 +122,11 @@ public class IdentifierExtractorBuilder {
     }
 
     /**
-     * 创建字段提取器
+     * 创建字段提取器（通过反射读取字段值）。
+     *
+     * @param clazz     目标类
+     * @param fieldName 字段名
+     * @return 字段提取器函数
      */
     private Function<Object, Object> createFieldExtractor(Class<?> clazz, String fieldName) {
         return obj -> {
@@ -144,7 +148,11 @@ public class IdentifierExtractorBuilder {
     }
 
     /**
-     * 创建方法提取器
+     * 创建方法提取器（通过反射调用无参方法）。
+     *
+     * @param clazz      目标类
+     * @param methodName 方法名
+     * @return 方法提取器函数
      */
     private Function<Object, Object> createMethodExtractor(Class<?> clazz, String methodName) {
         return obj -> {
@@ -166,7 +174,11 @@ public class IdentifierExtractorBuilder {
     }
 
     /**
-     * 在类继承链中查找字段
+     * 在类继承链中查找字段。
+     *
+     * @param clazz     目标类
+     * @param fieldName 字段名
+     * @return 字段；不存在时返回 null
      */
     private Field findField(Class<?> clazz, String fieldName) {
         Class<?> current = clazz;
@@ -181,7 +193,11 @@ public class IdentifierExtractorBuilder {
     }
 
     /**
-     * 在类继承链中查找无参方法
+     * 在类继承链中查找无参方法。
+     *
+     * @param clazz      目标类
+     * @param methodName 方法名
+     * @return 方法；不存在时返回 null
      */
     private Method findMethod(Class<?> clazz, String methodName) {
         Class<?> current = clazz;

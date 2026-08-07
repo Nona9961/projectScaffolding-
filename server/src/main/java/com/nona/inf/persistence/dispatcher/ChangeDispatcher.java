@@ -19,8 +19,18 @@ import com.nona.annotation.ScaffoldGenerated;
 @ScaffoldGenerated
 public class ChangeDispatcher {
 
+    /**
+     * 转换器注册中心（用于判断子表字段）
+     */
     private final ConverterRegistry converterRegistry;
 
+    /**
+     * 将变更集分发为主表变更与子表变更。
+     *
+     * @param changeSet 变更集
+     * @param rootClass 聚合根类型
+     * @return 分类后的变更数据
+     */
     public DispatchedChanges dispatch(ChangeSet changeSet, Class<?> rootClass) {
         final DispatchedChanges result = new DispatchedChanges();
         final Map<String, PoConverter<?, ?>> converters = converterRegistry.getAllConverters();
@@ -41,6 +51,13 @@ public class ChangeDispatcher {
         return result;
     }
 
+    /**
+     * 将子表字段的变更归类到对应集合变更分组中。
+     *
+     * @param change    变更项
+     * @param fieldName 子表字段名
+     * @param result    分类结果容器
+     */
     private void categorizeChildChange(Change change, String fieldName, DispatchedChanges result) {
         final DispatchedChanges.CollectionChanges collectionChanges = result.getOrCreateCollectionChanges(fieldName);
 

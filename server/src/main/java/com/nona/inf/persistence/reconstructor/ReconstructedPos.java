@@ -6,6 +6,8 @@ import com.nona.annotation.ScaffoldGenerated;
 /**
  * PO 重建结果
  *
+ * @param toSave   需要保存的 PO 列表
+ * @param toDelete 需要删除的 PO 信息列表
  * @author nona
  */
 @ScaffoldGenerated

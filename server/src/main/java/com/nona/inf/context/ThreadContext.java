@@ -20,30 +20,71 @@ import com.nona.annotation.ScaffoldGenerated;
 @Data
 @ScaffoldGenerated
 public class ThreadContext {
+
+    /**
+     * 当前租户 ID
+     */
     private String tenantID;
+
+    /**
+     * 当前角色列表（多角色支持）
+     */
     private List<String> role;
+
+    /**
+     * 请求者身份标识（token / userId / apiKey 等）
+     */
     private String identity;
+
+    /**
+     * 根对象快照存储（key 为 ID）
+     */
     private Map<Long, Object> snapshots = new ConcurrentHashMap<>(8);
+
+    /**
+     * 请求级属性存储（key-value）
+     */
     private Map<String, Object> attributes = new ConcurrentHashMap<>(4);
 
+    /**
+     * 保存根对象快照。
+     *
+     * @param id   根对象 ID
+     * @param root 根对象
+     */
     public void saveSnapshot(Long id, Object root) {
         snapshots.put(id, root);
     }
 
+    /**
+     * 获取根对象快照。
+     *
+     * @param id        根对象 ID
+     * @param reference 类型引用（用于泛型推导）
+     * @return 根对象；不存在时返回 null
+     * @param <T> 根对象类型
+     */
     @SuppressWarnings("unchecked")
     public <T> T getSnapshot(Long id, TypeReference<T> reference) {
         return (T) snapshots.get(id);
     }
 
     /**
-     * 设置属性
+     * 设置请求级属性。
+     *
+     * @param key   属性名
+     * @param value 属性值
      */
     public void setAttribute(String key, Object value) {
         attributes.put(key, value);
     }
 
     /**
-     * 获取属性
+     * 获取请求级属性。
+     *
+     * @param key 属性名
+     * @return 属性值；不存在时返回 null
+     * @param <T> 属性值类型
      */
     @SuppressWarnings("unchecked")
     public <T> T getAttribute(String key) {
@@ -51,7 +92,9 @@ public class ThreadContext {
     }
 
     /**
-     * 移除属性
+     * 移除请求级属性。
+     *
+     * @param key 属性名
      */
     public void removeAttribute(String key) {
         attributes.remove(key);

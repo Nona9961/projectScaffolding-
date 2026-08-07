@@ -52,7 +52,10 @@ public class DispatchedChanges {
     }
 
     /**
-     * 获取或创建子表变更
+     * 获取或创建子表变更。
+     *
+     * @param fieldName 子表字段名
+     * @return 该字段的变更分组
      */
     public CollectionChanges getOrCreateCollectionChanges(String fieldName) {
         return childTableChanges.computeIfAbsent(fieldName, k -> new CollectionChanges());
@@ -63,6 +66,7 @@ public class DispatchedChanges {
      */
     @Getter
     public static class CollectionChanges {
+
         /**
          * 新增项列表
          */
@@ -81,21 +85,38 @@ public class DispatchedChanges {
          */
         private final List<Change> fieldChanges = new ArrayList<>();
 
+        /**
+         * 新增一条新增项变更。
+         *
+         * @param change 新增项变更
+         */
         public void addAddition(ItemAddedChange change) {
             additions.add(change);
         }
 
+        /**
+         * 新增一条删除项变更。
+         *
+         * @param change 删除项变更
+         */
         public void addRemoval(ItemRemovedChange change) {
             removals.add(change);
         }
 
+        /**
+         * 新增一条字段变更。
+         *
+         * @param change 字段变更
+         */
         public void addFieldChange(Change change) {
             fieldChanges.add(change);
         }
     }
 
     /**
-     * 检查是否为空（没有任何变更）
+     * 检查是否为空（没有任何变更）。
+     *
+     * @return 没有任何变更时返回 true
      */
     public boolean isEmpty() {
         return mainTableChanges.isEmpty() && childTableChanges.isEmpty();
