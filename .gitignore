@@ -29,6 +29,3 @@ replay_pid*
 target/
 .mvn/maven.config
 
-# 内部文档（不公开）：供本地开发者与 AI 使用
-/domain.md
-/structure.md
