@@ -1,6 +1,7 @@
 package com.nona.inf.persistence.tenant;
 
 import com.nona.inf.context.TenantContextAccessor;
+import com.nona.inf.context.TenantPrivilege;
 import com.nona.inf.persistence.po.TenantScopedBasePO;
 import com.nona.util.BusinessAssert;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +15,7 @@ import com.nona.annotation.ScaffoldGenerated;
  * 多租户隔离（ADR-001 / ADR-007）
  * <p>
  * 基于 Hibernate discriminator multi-tenancy（@TenantId）实现 tenant-scoped 的自动隔离（读 fail-closed；写自动注入/校验 tenantID）。
+ * 写门禁判断源为 {@link com.nona.inf.context.TenantPrivilege}：提权作用域内放行实体显式合法租户，非提权状态强制与当前租户一致。
  *
  * @author nona
  */
@@ -72,9 +74,9 @@ public class TenantRepositoryAspect {
     /**
      * 对 tenant-scoped 实体执行写入门禁：
      * <p>
-     * - cross-tenant：实体显式携带合法 tenantID 则放行并保留原值（系统编排/superAdmin/C 端跨店下单场景，
+     * - 提权作用域内：实体显式携带合法 tenantID 则放行并保留原值（系统编排/superAdmin/C 端跨店下单场景，
      *   允许上下文无租户）；实体未携带则回退注入当前 tenant（admin 代建场景），此时当前 tenant 必须存在
-     * - non cross-tenant：当前 tenant 必须存在；entity tenantID 缺失则注入，不一致则拒绝
+     * - 非提权状态：当前 tenant 必须存在；entity tenantID 缺失则注入，不一致则拒绝
      *
      * @param entity 待写入的实体对象
      * @throws com.nona.exceptions.BusinessException 当租户规则校验失败时抛出
@@ -87,7 +89,7 @@ public class TenantRepositoryAspect {
         final String entityTenantID = normalizeTenantID(tenantScopedPO.getTenantID());
         final String tenantID = tenantContextAccessor.getTenantID();
 
-        if (tenantContextAccessor.isCrossTenant()) {
+        if (TenantPrivilege.isActive()) {
             if (entityTenantID != null) {
                 BusinessAssert.assertTrue(!TenantContextAccessor.MISSING_TENANT_ID.equals(entityTenantID),
                         "invalid tenantID: {}", entityTenantID);

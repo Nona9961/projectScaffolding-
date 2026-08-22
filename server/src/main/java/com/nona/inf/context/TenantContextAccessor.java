@@ -25,11 +25,6 @@ public class TenantContextAccessor {
     public static final String MISSING_TENANT_ID = "__MISSING_TENANT__";
 
     /**
-     * ThreadContext 属性中 cross-tenant 开关的键名
-     */
-    private static final String CROSS_TENANT_KEY = "CROSS_TENANT";
-
-    /**
      * 异步线程回退存储：worker 线程经 {@link #saveSnapshot} 写入
      */
     private static final ThreadLocal<ContextSnapshot> snapshotHolder = new ThreadLocal<>();
@@ -175,40 +170,6 @@ public class TenantContextAccessor {
             return snapshot.identity();
         }
         return null;
-    }
-
-    /**
-     * 判断当前调用链是否显式开启了跨租户模式。
-     *
-     * @return 是否启用跨租户模式
-     */
-    public boolean isCrossTenant() {
-        final ThreadContext threadContext = getThreadContextIfActive();
-        if (threadContext == null) {
-            return false;
-        }
-
-        final Boolean value = threadContext.getAttribute(CROSS_TENANT_KEY);
-        return Boolean.TRUE.equals(value);
-    }
-
-    /**
-     * 设置当前调用链的跨租户开关（作用域由调用方控制）。
-     *
-     * @param enabled 是否启用跨租户模式
-     * @throws IllegalStateException 当 {@link ThreadContext} 的 request scope 未激活时抛出
-     */
-    public void setCrossTenant(boolean enabled) {
-        final ThreadContext threadContext = getThreadContextIfActive();
-        if (threadContext == null) {
-            throw new IllegalStateException("ThreadContext scope is not active");
-        }
-
-        if (enabled) {
-            threadContext.setAttribute(CROSS_TENANT_KEY, true);
-            return;
-        }
-        threadContext.removeAttribute(CROSS_TENANT_KEY);
     }
 
     /**

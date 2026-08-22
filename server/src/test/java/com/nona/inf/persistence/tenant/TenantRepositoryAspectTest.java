@@ -130,7 +130,7 @@ class TenantRepositoryAspectTest {
     }
 
     /**
-     * 验证 tenant-scoped 的 count/existsById 在不同 tenant 下隔离；cross-tenant 下可跨租户统计。
+     * 验证 tenant-scoped 的 count/existsById 在不同 tenant 下隔离；提权作用域下可跨租户统计。
      */
     @Test
     void tenantScopedCountAndExistsShouldBeFiltered() {
@@ -301,7 +301,7 @@ class TenantRepositoryAspectTest {
     }
 
     /**
-     * 验证 @CrossTenant 可绕过 tenant 读隔离，且作用域必须收敛（离开方法后恢复）。
+     * 验证提权作用域可绕过 tenant 读隔离，且作用域必须收敛（离开作用域后恢复）。
      */
     @Test
     void crossTenantShouldBypassTenantIsolationInReadAndBeScopeBound() {
@@ -333,7 +333,40 @@ class TenantRepositoryAspectTest {
     }
 
     /**
-     * 验证 @CrossTenant 下 findById 可跨租户读取。
+     * 验证提权作用域内 listAllNotes 全量可见（跨 t1/t2 数据均能查到），出作用域后立即恢复隔离。
+     */
+    @Test
+    void elevatedScopeShouldExposeAllTenantsInsideAndRestoreIsolationAfterExit() {
+        LocalDateTime now = LocalDateTime.now();
+
+        threadContext.setTenantID("t1");
+        TestTenantNotePO t1 = new TestTenantNotePO();
+        t1.setId(91L);
+        t1.setContent("note-t1");
+        t1.setCreateTime(now);
+        t1.setUpdateTime(now);
+        tenantNoteRepository.save(t1);
+
+        threadContext.setTenantID("t2");
+        TestTenantNotePO t2 = new TestTenantNotePO();
+        t2.setId(92L);
+        t2.setContent("note-t2");
+        t2.setCreateTime(now);
+        t2.setUpdateTime(now);
+        tenantNoteRepository.save(t2);
+
+        assertThat(tenantNoteRepository.findAll()).hasSize(1);
+
+        List<TestTenantNotePO> all = crossTenantTestService.listAllNotes();
+        assertThat(all).hasSize(2);
+        assertThat(all).extracting(TestTenantNotePO::getId).containsExactlyInAnyOrder(91L, 92L);
+
+        assertThat(tenantNoteRepository.findAll()).hasSize(1);
+        assertThat(tenantNoteRepository.findAll().get(0).getId()).isEqualTo(92L);
+    }
+
+    /**
+     * 验证提权作用域下 findById 可跨租户读取。
      */
     @Test
     void crossTenantFindByIdShouldBypassIsolation() {
@@ -353,7 +386,7 @@ class TenantRepositoryAspectTest {
     }
 
     /**
-     * 验证 @CrossTenant 允许跨租户写（显式提供 entity tenantID，保留原值）。
+     * 验证提权作用域允许跨租户写（显式提供 entity tenantID，保留原值）。
      */
     @Test
     void crossTenantWriteShouldKeepExplicitTenantID() {
@@ -365,7 +398,7 @@ class TenantRepositoryAspectTest {
     }
 
     /**
-     * 验证 @CrossTenant + entity tenantID 缺失 → 注入当前 tenant（admin 普通创建场景）。
+     * 验证提权作用域 + entity tenantID 缺失 → 注入当前 tenant（admin 普通创建场景）。
      */
     @Test
     void crossTenantWriteShouldInjectCurrentTenantWhenEntityTenantMissing() {
@@ -378,7 +411,7 @@ class TenantRepositoryAspectTest {
     }
 
     /**
-     * 验证 @CrossTenant + 当前 tenant 缺失 + 实体携带 MISSING 占位 → 写入拒绝（fail-closed）。
+     * 验证提权作用域 + 当前 tenant 缺失 + 实体携带 MISSING 占位 → 写入拒绝（fail-closed）。
      */
     @Test
     void crossTenantWriteShouldRejectMissingPlaceholderEntityTenant() {
@@ -389,7 +422,7 @@ class TenantRepositoryAspectTest {
     }
 
     /**
-     * 验证 @CrossTenant + 当前 tenant 缺失 + 实体显式合法 tenant → 放行且保留原值（C 端跨店下单场景）。
+     * 验证提权作用域 + 当前 tenant 缺失 + 实体显式合法 tenant → 放行且保留原值（C 端跨店下单场景）。
      */
     @Test
     void crossTenantWriteShouldKeepExplicitTenantWhenContextTenantMissing() {
@@ -403,7 +436,7 @@ class TenantRepositoryAspectTest {
     }
 
     /**
-     * 验证 @CrossTenant + 当前 tenant 缺失 + 实体未携带 tenant → 拒绝（双缺失 fail-closed 回归保护）。
+     * 验证提权作用域 + 当前 tenant 缺失 + 实体未携带 tenant → 拒绝（双缺失 fail-closed 回归保护）。
      */
     @Test
     void crossTenantWriteShouldRejectWhenBothMissing() {

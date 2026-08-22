@@ -1,6 +1,7 @@
 package com.nona.inf.persistence.tenant;
 
 import com.nona.inf.context.TenantContextAccessor;
+import com.nona.inf.context.TenantPrivilege;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.context.spi.CurrentTenantIdentifierResolver;
 import org.springframework.stereotype.Component;
@@ -11,7 +12,7 @@ import com.nona.annotation.ScaffoldGenerated;
  * <p>
  * - 默认：使用当前 ThreadContext 的 tenantID
  * - tenant 缺失：返回 {@link TenantContextAccessor#MISSING_TENANT_ID} 实现 fail-closed
- * - cross-tenant：返回 root tenant，绕过 Hibernate 内置的 _tenantId filter
+ * - 提权作用域：TenantPrivilege 激活时返回 root tenant，绕过 Hibernate 内置的 _tenantId filter
  *
  * @author nona
  */
@@ -21,7 +22,7 @@ import com.nona.annotation.ScaffoldGenerated;
 public class ThreadContextTenantIdentifierResolver implements CurrentTenantIdentifierResolver<String> {
 
     /**
-     * 根租户 ID：cross-tenant 模式下返回该值以绕过 discriminator 过滤
+     * 根租户 ID：提权作用域下返回该值以绕过 discriminator 过滤
      */
     public static final String ROOT_TENANT_ID = "__ROOT_TENANT__";
 
@@ -33,11 +34,11 @@ public class ThreadContextTenantIdentifierResolver implements CurrentTenantIdent
     /**
      * 为 Hibernate 解析当前会话的 tenant identifier。
      *
-     * @return 当前 tenant identifier；cross-tenant 时返回 {@link #ROOT_TENANT_ID}，tenant 缺失时返回 {@link TenantContextAccessor#MISSING_TENANT_ID}
+     * @return 当前 tenant identifier；提权作用域内返回 {@link #ROOT_TENANT_ID}，tenant 缺失时返回 {@link TenantContextAccessor#MISSING_TENANT_ID}
      */
     @Override
     public String resolveCurrentTenantIdentifier() {
-        if (tenantContextAccessor.isCrossTenant()) {
+        if (TenantPrivilege.isActive()) {
             return ROOT_TENANT_ID;
         }
         return tenantContextAccessor.getTenantIDOrMissing();
