@@ -23,6 +23,13 @@
 - **安全默认**：仅暴露 `health` / `info` 两个 Actuator 端点，其余端点由具体项目自行决定
 - **现代技术栈**：Java 25 虚拟线程、Spring Boot 4.1
 
+## 多租户
+
+tenant-scoped 数据基于 Hibernate `@TenantId` 自动读写隔离，写入门禁自动注入/校验租户；跨租户操作必须包在 `TenantPrivilege.elevated` 显式提权作用域内。
+fail-closed：上下文租户缺失时不放行任何 tenant-scoped 数据——查询返回空集、写入直接拒绝。
+
+详细用法见[多租户使用手册](docs/multitenancy-guide.md)。
+
 ## 快速开始
 
 ```bash
