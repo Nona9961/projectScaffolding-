@@ -72,10 +72,9 @@ public class TenantRepositoryAspect {
     /**
      * 对 tenant-scoped 实体执行写入门禁：
      * <p>
-     * - 无论 cross-tenant 或 non-cross-tenant，当前 tenant 缺失则拒绝
-     * - cross-tenant：entity tenantID 缺失则注入当前 tenant（admin 普通创建场景）；
-     *   已显式指定则保留原值，支持跨租户维护
-     * - non cross-tenant：entity tenantID 缺失则注入；不一致则拒绝
+     * - cross-tenant：实体显式携带合法 tenantID 则放行并保留原值（系统编排/superAdmin/C 端跨店下单场景，
+     *   允许上下文无租户）；实体未携带则回退注入当前 tenant（admin 代建场景），此时当前 tenant 必须存在
+     * - non cross-tenant：当前 tenant 必须存在；entity tenantID 缺失则注入，不一致则拒绝
      *
      * @param entity 待写入的实体对象
      * @throws com.nona.exceptions.BusinessException 当租户规则校验失败时抛出
@@ -85,20 +84,25 @@ public class TenantRepositoryAspect {
             return;
         }
 
-        final String tenantID = tenantContextAccessor.getTenantID();
-        BusinessAssert.assertNonNull(tenantID, "tenantID is required for tenant-scoped write operation");
-        BusinessAssert.assertTrue(!TenantContextAccessor.MISSING_TENANT_ID.equals(tenantID), "invalid tenantID: {}", tenantID);
-
         final String entityTenantID = normalizeTenantID(tenantScopedPO.getTenantID());
+        final String tenantID = tenantContextAccessor.getTenantID();
+
         if (tenantContextAccessor.isCrossTenant()) {
-            if (entityTenantID == null) {
-                tenantScopedPO.setTenantID(tenantID);
+            if (entityTenantID != null) {
+                BusinessAssert.assertTrue(!TenantContextAccessor.MISSING_TENANT_ID.equals(entityTenantID),
+                        "invalid tenantID: {}", entityTenantID);
                 return;
             }
-            BusinessAssert.assertTrue(!TenantContextAccessor.MISSING_TENANT_ID.equals(entityTenantID),
-                    "invalid tenantID: {}", entityTenantID);
+            BusinessAssert.assertNonNull(tenantID,
+                    "tenantID is required to inject into tenant-scoped write");
+            BusinessAssert.assertTrue(!TenantContextAccessor.MISSING_TENANT_ID.equals(tenantID),
+                    "invalid tenantID: {}", tenantID);
+            tenantScopedPO.setTenantID(tenantID);
             return;
         }
+
+        BusinessAssert.assertNonNull(tenantID, "tenantID is required for tenant-scoped write operation");
+        BusinessAssert.assertTrue(!TenantContextAccessor.MISSING_TENANT_ID.equals(tenantID), "invalid tenantID: {}", tenantID);
 
         if (entityTenantID == null) {
             tenantScopedPO.setTenantID(tenantID);

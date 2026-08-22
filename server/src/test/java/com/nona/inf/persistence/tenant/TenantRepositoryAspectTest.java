@@ -2,6 +2,7 @@ package com.nona.inf.persistence.tenant;
 
 import com.nona.ProjectApplication;
 import com.nona.exceptions.BusinessException;
+import com.nona.inf.context.TenantContextAccessor;
 import com.nona.inf.context.ThreadContext;
 import com.nona.inf.persistence.repository.jpa.TestGlobalNoteRepository;
 import com.nona.inf.persistence.repository.jpa.TestTenantNoteRepository;
@@ -377,12 +378,38 @@ class TenantRepositoryAspectTest {
     }
 
     /**
-     * 验证 @CrossTenant + 当前 tenant 缺失 → 写入拒绝（fail-closed）。
+     * 验证 @CrossTenant + 当前 tenant 缺失 + 实体携带 MISSING 占位 → 写入拒绝（fail-closed）。
      */
     @Test
-    void crossTenantWriteShouldFailWhenCurrentTenantMissing() {
+    void crossTenantWriteShouldRejectMissingPlaceholderEntityTenant() {
         threadContext.setTenantID(null);
-        assertThrows(BusinessException.class, () -> crossTenantTestService.saveNoteForTenant("t2", 81L, "note-t2"));
+        assertThrows(BusinessException.class,
+                () -> crossTenantTestService.saveNoteForTenant(TenantContextAccessor.MISSING_TENANT_ID, 81L, "illegal"));
+        assertThat(crossTenantTestService.listAllNotes()).isEmpty();
+    }
+
+    /**
+     * 验证 @CrossTenant + 当前 tenant 缺失 + 实体显式合法 tenant → 放行且保留原值（C 端跨店下单场景）。
+     */
+    @Test
+    void crossTenantWriteShouldKeepExplicitTenantWhenContextTenantMissing() {
+        threadContext.setTenantID(null);
+        crossTenantTestService.saveNoteForTenant("t1", 100L, "explicit");
+
+        List<TestTenantNotePO> all = crossTenantTestService.listAllNotes();
+        assertThat(all).hasSize(1);
+        assertThat(all.get(0).getTenantID()).isEqualTo("t1");
+        assertThat(all.get(0).getContent()).isEqualTo("explicit");
+    }
+
+    /**
+     * 验证 @CrossTenant + 当前 tenant 缺失 + 实体未携带 tenant → 拒绝（双缺失 fail-closed 回归保护）。
+     */
+    @Test
+    void crossTenantWriteShouldRejectWhenBothMissing() {
+        threadContext.setTenantID(null);
+
+        assertThrows(BusinessException.class, () -> crossTenantTestService.saveNoteWithoutTenantID(82L, "illegal"));
         assertThat(crossTenantTestService.listAllNotes()).isEmpty();
     }
 }
