@@ -61,41 +61,61 @@ public String resolveCurrentTenantIdentifier() {
    查询都用这个视角。
 2. **需要另一个视角 = 新 session**。跨视角的操作必须拆到不同事务。
 
-### 2.2 提权作用域必须罩住事务边界
+### 2.2 读路径：提权能穿透已定型 session（双保险）
 
-由于读路径的开关就是「session 打开那一刻 resolver 读到什么」，提权作用域若晚于事务开启才进入，
-session 已按原租户定型，作用域内查询**仍然被过滤**：
+读路径有两重保险，`elevated` 不必强制罩住事务边界：
+
+- **第一重（session 打开时）**：resolver 读到提权状态即返回 root 租户，新 session 不启用
+  `_tenantId` filter，作用域内查询天然全量可见；
+- **第二重（session 已定型）**：`TenantScopeListener` 在提权进入时禁用已绑定 session 的
+  filter、退出时恢复原租户参数——即使先以普通租户开了事务，作用域内的查询也能透传。
 
 ```java
-// ❌ 错误：作用域罩不住事务边界，提权对已定型的 session 无效
+// ✅ 读：已定型 session 内提权查询也放行（第二重保险生效）
 @Transactional
 public List<Order> listAllOrders() {
-    return TenantPrivilege.elevated(() -> orderRepository.findAll());   // 依旧只看到本租户
+    return TenantPrivilege.elevated(() -> orderRepository.findAll());   // 全量可见
 }
 
-// ✅ 正确一：组合 API，先提权再开事务
+// ✅ 更简洁的正确姿势：组合 API，先提权再开事务
 public List<Order> listAllOrders() throws Exception {
     return TenantPrivilege.elevatedInTransaction(transactionTemplate,
             () -> orderRepository.findAll());
 }
+```
 
-// ✅ 正确二：手工保证顺序——elevated 包在 @Transactional 方法外面
-public List<Order> listAllOrders() throws Exception {
-    return TenantPrivilege.elevated(() -> self.transactionalListAll());
+### 2.3 写路径：提权仍然必须罩住事务边界
+
+写不受第二重保险保护：Hibernate `@TenantId` 的 assigned-id 校验基于 **session 定型时**的
+租户，与提权状态无关。已定型 session 内提权写入显式异租户实体仍会在 flush 时抛
+`PropertyValueException`（fail-fast，设计如此）。
+
+```java
+// ❌ 错误：session 已按本租户定型，写异租户实体必然 flush 失败
+@Transactional
+public void createCrossShopOrder() {
+    TenantPrivilege.elevated(() -> shopRepository.save(crossShopOrder));   // 抛 PropertyValueException
+}
+
+// ✅ 正确：先提权再开事务，session 打开时租户模式即按提权定型
+public void createCrossShopOrder() throws Exception {
+    TenantPrivilege.elevatedInTransaction(transactionTemplate,
+            () -> shopRepository.save(crossShopOrder));
 }
 ```
 
 无事务的短命查询（每次 repository 调用各开一个 session）不受此限：只要调用发生在作用域内，
 新 session 打开时即可读到提权状态。证例见
 `server/src/test/java/com/nona/inf/persistence/tenant/TenantRepositoryAspectTest.java`
-的 `elevatedScopeShouldExposeAllTenantsInsideAndRestoreIsolationAfterExit`。
+的 `elevatedScopeShouldExposeAllTenantsInsideAndRestoreIsolationAfterExit` 与
+`sameTransactionElevatedScopeShouldExposeAllTenantsAndRestoreAfterExit`。
 
 ---
 
 ## 3. 写入门禁
 
-`TenantRepositoryAspect` 拦截所有 Spring Data Repository 的 `save` / `saveAll`，
-对 tenant-scoped 实体执行门禁。
+`TenantRepositoryAspect` 拦截所有 Spring Data Repository 的 `save` / `saveAndFlush` / `saveAll` /
+`saveAllAndFlush`，对 tenant-scoped 实体执行门禁。
 
 ### 3.1 非提权状态：三条规则
 
@@ -187,11 +207,12 @@ C 端跨店下单是典型形态：买家上下文**没有租户**，一次订�
 每次进入作用域打一条 INFO 日志：
 
 ```text
-[TenantPrivilege] elevated scope enter, action=XxxService$$Lambda$123, alreadyActive=false, at=2026-08-22T10:00:00Z
+[TenantPrivilege] elevated scope enter, action=XxxService$$Lambda$123, alreadyActive=false, identity=buyer-001, tenantID=shop-A, at=2026-08-22T10:00:00Z
 ```
 
-`alreadyActive=true` 表示嵌套提权，review 时应重点追问必要性。生产环境建议对该日志关键字
-配置采集告警，做到「谁在什么时候进了提权」可追溯。
+`alreadyActive=true` 表示嵌套提权，review 时应重点追问必要性；`identity` / `tenantID` 为
+进入提权时的调用者身份与当前租户（未注册访问器或缺失时显示 `unknown`）。生产环境建议对该日志
+关键字配置采集告警，做到「谁在什么时候进了提权」可追溯。
 
 ### 4.4 边界行为
 
@@ -346,10 +367,8 @@ Hibernate 相关组件（resolver / `@TenantId` filter / AOP 门禁）只是契�
 | 查询静默返回空集，库里有数据 | 上下文租户缺失（请求没设 / worker 无快照 / 快照 EMPTY），
   fail-closed 生效 | 按 §6 排查顺序检查 `getTenantID()`；绑 decorator、配对快照 |
 | `PropertyValueException: assigned tenant id differs...` | session 已按具体租户定型，
-  却以显式异租户实体走了 ORM 写入（绕过门禁或提权未生效） | 别绕过 repository；确认提权作用域
-  罩住事务边界（§2.2 / §3.3） |
-| 提权了但跨租户查询仍只见本租户 | `elevated` 写在了 `@Transactional` 方法内部，
-  session 先于作用域定型 | 改用 `elevatedInTransaction` 或把 `elevated` 移到事务外层（§2.2） |
+  却以显式异租户实体走了 ORM 写入（绕过门禁或提权作用域未罩住事务边界） | 别绕过 repository；
+  写必须用 `elevatedInTransaction` 或把 `elevated` 移到事务外层（§2.3 / §3.3） |
 | 提权了但写入仍被拒 `cross-tenant write is forbidden` | 该路径不在提权作用域内
   （作用域提前退出了），或实体租户为 `__MISSING_TENANT__` 占位 | 检查作用域覆盖范围；
   实体显式设置合法租户，勿填占位值（§3.2） |

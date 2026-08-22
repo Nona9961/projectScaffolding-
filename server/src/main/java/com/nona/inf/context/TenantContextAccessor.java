@@ -1,5 +1,6 @@
 package com.nona.inf.context;
 
+import com.nona.annotation.ScaffoldGenerated;
 import jakarta.annotation.Nullable;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
@@ -7,12 +8,11 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestContextHolder;
 
 import java.util.List;
-import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * 租户上下文读取器（基于 {@link ThreadContext}）。
  *
- * @author nona
+ * @author nona9961
  */
 @Component
 @RequiredArgsConstructor
@@ -33,27 +33,6 @@ public class TenantContextAccessor {
      * 请求作用域 ThreadContext 的懒加载提供者
      */
     private final ObjectProvider<ThreadContext> threadContextProvider;
-
-    /**
-     * Captures a snapshot of the current {@link ThreadContext} for cross-thread propagation.
-     * <p>
-     * Only propagates: tenantID, role, identity. Other fields (attributes, snapshots) are not
-     * captured.
-     *
-     * @return a snapshot of the current context, or a snapshot with all-null fields if
-     *         {@link ThreadContext} is not in scope
-     */
-    public ContextSnapshot captureSnapshot() {
-        final ThreadContext threadContext = getThreadContextIfActive();
-        if (threadContext == null) {
-            return ContextSnapshot.EMPTY;
-        }
-        return new ContextSnapshot(
-                threadContext.getTenantID(),
-                threadContext.getRole(),
-                threadContext.getIdentity()
-        );
-    }
 
     /**
      * Saves a {@link ContextSnapshot} into the static {@link ThreadLocal} fallback store.
@@ -77,6 +56,27 @@ public class TenantContextAccessor {
      */
     public static void clearSnapshot() {
         snapshotHolder.remove();
+    }
+
+    /**
+     * Captures a snapshot of the current {@link ThreadContext} for cross-thread propagation.
+     * <p>
+     * Only propagates: tenantID, role, identity. Other fields (attributes, snapshots) are not
+     * captured.
+     *
+     * @return a snapshot of the current context, or a snapshot with all-null fields if
+     *         {@link ThreadContext} is not in scope
+     */
+    public ContextSnapshot captureSnapshot() {
+        final ThreadContext threadContext = getThreadContextIfActive();
+        if (threadContext == null) {
+            return ContextSnapshot.EMPTY;
+        }
+        return new ContextSnapshot(
+                threadContext.getTenantID(),
+                threadContext.getRole(),
+                threadContext.getIdentity()
+        );
     }
 
     /**

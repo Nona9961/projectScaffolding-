@@ -1,17 +1,23 @@
 package com.nona.inf.persistence.tenant;
 
+import com.nona.annotation.ScaffoldGenerated;
 import com.nona.ProjectApplication;
 import com.nona.exceptions.BusinessException;
 import com.nona.inf.context.TenantContextAccessor;
+import com.nona.inf.context.TenantPrivilege;
 import com.nona.inf.context.ThreadContext;
 import com.nona.inf.persistence.repository.jpa.TestGlobalNoteRepository;
 import com.nona.inf.persistence.repository.jpa.TestTenantNoteRepository;
+import jakarta.persistence.EntityManager;
+import org.hibernate.Session;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
@@ -19,9 +25,14 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import com.nona.annotation.ScaffoldGenerated;
 
+/**
+ * 多租户隔离集成测试：写门禁、读过滤、提权作用域与 filter 双保险。
+ *
+ * @author nona9961
+ */
 @SpringBootTest(classes = ProjectApplication.class)
 @ScaffoldGenerated
 class TenantRepositoryAspectTest {
@@ -36,7 +47,13 @@ class TenantRepositoryAspectTest {
     private ThreadContext threadContext;
 
     @Autowired
-    private CrossTenantTestService crossTenantTestService;
+    private ElevatedTenantTestService elevatedTenantTestService;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
+    @Autowired
+    private EntityManager entityManager;
 
     /**
      * 初始化 request scope（模拟 Web 请求）并清理测试数据。
@@ -44,7 +61,7 @@ class TenantRepositoryAspectTest {
     @BeforeEach
     void setUpRequestScope() {
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(new MockHttpServletRequest()));
-        crossTenantTestService.deleteAllNotes();
+        elevatedTenantTestService.deleteAllNotes();
     }
 
     /**
@@ -165,9 +182,9 @@ class TenantRepositoryAspectTest {
         assertThat(tenantNoteRepository.count()).isZero();
         assertThat(tenantNoteRepository.existsById(31L)).isFalse();
 
-        assertThat(crossTenantTestService.countAllNotes()).isEqualTo(2);
-        assertThat(crossTenantTestService.noteExists(31L)).isTrue();
-        assertThat(crossTenantTestService.noteExists(32L)).isTrue();
+        assertThat(elevatedTenantTestService.countAllNotes()).isEqualTo(2);
+        assertThat(elevatedTenantTestService.noteExists(31L)).isTrue();
+        assertThat(elevatedTenantTestService.noteExists(32L)).isTrue();
 
         assertThat(tenantNoteRepository.count()).isZero();
     }
@@ -297,7 +314,7 @@ class TenantRepositoryAspectTest {
         po2.setUpdateTime(now);
 
         assertThrows(BusinessException.class, () -> tenantNoteRepository.saveAll(List.of(po1, po2)));
-        assertThat(crossTenantTestService.listAllNotes()).isEmpty();
+        assertThat(elevatedTenantTestService.listAllNotes()).isEmpty();
     }
 
     /**
@@ -326,7 +343,7 @@ class TenantRepositoryAspectTest {
         threadContext.setTenantID(null);
         assertThat(tenantNoteRepository.findAll()).isEmpty();
 
-        List<TestTenantNotePO> all = crossTenantTestService.listAllNotes();
+        List<TestTenantNotePO> all = elevatedTenantTestService.listAllNotes();
         assertThat(all).hasSize(2);
 
         assertThat(tenantNoteRepository.findAll()).isEmpty();
@@ -357,7 +374,7 @@ class TenantRepositoryAspectTest {
 
         assertThat(tenantNoteRepository.findAll()).hasSize(1);
 
-        List<TestTenantNotePO> all = crossTenantTestService.listAllNotes();
+        List<TestTenantNotePO> all = elevatedTenantTestService.listAllNotes();
         assertThat(all).hasSize(2);
         assertThat(all).extracting(TestTenantNotePO::getId).containsExactlyInAnyOrder(91L, 92L);
 
@@ -382,7 +399,7 @@ class TenantRepositoryAspectTest {
 
         threadContext.setTenantID(null);
         assertThat(tenantNoteRepository.findById(21L)).isEmpty();
-        assertThat(crossTenantTestService.getNote(21L)).isNotNull();
+        assertThat(elevatedTenantTestService.getNote(21L)).isNotNull();
     }
 
     /**
@@ -391,7 +408,7 @@ class TenantRepositoryAspectTest {
     @Test
     void crossTenantWriteShouldKeepExplicitTenantID() {
         threadContext.setTenantID("t1");
-        crossTenantTestService.saveNoteForTenant("t2", 100L, "note-t2");
+        elevatedTenantTestService.saveNoteForTenant("t2", 100L, "note-t2");
 
         threadContext.setTenantID("t2");
         assertThat(tenantNoteRepository.findAll()).hasSize(1);
@@ -403,7 +420,7 @@ class TenantRepositoryAspectTest {
     @Test
     void crossTenantWriteShouldInjectCurrentTenantWhenEntityTenantMissing() {
         threadContext.setTenantID("t1");
-        crossTenantTestService.saveNoteWithoutTenantID(71L, "note-from-admin");
+        elevatedTenantTestService.saveNoteWithoutTenantID(71L, "note-from-admin");
 
         threadContext.setTenantID("t1");
         assertThat(tenantNoteRepository.findAll()).hasSize(1);
@@ -417,8 +434,8 @@ class TenantRepositoryAspectTest {
     void crossTenantWriteShouldRejectMissingPlaceholderEntityTenant() {
         threadContext.setTenantID(null);
         assertThrows(BusinessException.class,
-                () -> crossTenantTestService.saveNoteForTenant(TenantContextAccessor.MISSING_TENANT_ID, 81L, "illegal"));
-        assertThat(crossTenantTestService.listAllNotes()).isEmpty();
+                () -> elevatedTenantTestService.saveNoteForTenant(TenantContextAccessor.MISSING_TENANT_ID, 81L, "illegal"));
+        assertThat(elevatedTenantTestService.listAllNotes()).isEmpty();
     }
 
     /**
@@ -427,9 +444,9 @@ class TenantRepositoryAspectTest {
     @Test
     void crossTenantWriteShouldKeepExplicitTenantWhenContextTenantMissing() {
         threadContext.setTenantID(null);
-        crossTenantTestService.saveNoteForTenant("t1", 100L, "explicit");
+        elevatedTenantTestService.saveNoteForTenant("t1", 100L, "explicit");
 
-        List<TestTenantNotePO> all = crossTenantTestService.listAllNotes();
+        List<TestTenantNotePO> all = elevatedTenantTestService.listAllNotes();
         assertThat(all).hasSize(1);
         assertThat(all.get(0).getTenantID()).isEqualTo("t1");
         assertThat(all.get(0).getContent()).isEqualTo("explicit");
@@ -442,7 +459,83 @@ class TenantRepositoryAspectTest {
     void crossTenantWriteShouldRejectWhenBothMissing() {
         threadContext.setTenantID(null);
 
-        assertThrows(BusinessException.class, () -> crossTenantTestService.saveNoteWithoutTenantID(82L, "illegal"));
-        assertThat(crossTenantTestService.listAllNotes()).isEmpty();
+        assertThrows(BusinessException.class, () -> elevatedTenantTestService.saveNoteWithoutTenantID(82L, "illegal"));
+        assertThat(elevatedTenantTestService.listAllNotes()).isEmpty();
+    }
+
+    /**
+     * M2 红点契约（读路径 filter 双保险第二重）：同一事务/session 内“先以 tenant-A 定型，后提权查询”必须全量可见。
+     * <p>
+     * 场景：TransactionTemplate 回调使所有 repository 调用经 REQUIRED 传播复用同一事务/同一 Hibernate Session；
+     * resolver 仅在 session 打开时调用一次并定型租户模式（validateExistingCurrentSessions=false 不做动态校验）。
+     * 之后进入提权作用域，期望提权查询绕过单租户过滤看到全部数据。
+     * 当前实现只有第一重保险（resolver 在 session 打开时判定 root），缺第二重（提权时切换 Hibernate _tenantId filter）
+     * → 提权查询静默仍被过滤 → 本用例在第 4 步红。
+     * <p>
+     * 前提（session 复用成立，否则本用例不构成 M2 复现）：回调首尾两次 unwrap 得到同一 Session 实例（断言见下）。
+     * 数据准备必须发生在独立事务中（session 打开时提权已激活，写入校验放行）——
+     * 若在回调内（session 已定型 tenant-A）写入 tenant-B，Hibernate @TenantId 的 flush 校验会直接拒绝（见另一用例），
+     * 无法到达本用例要钉的查询红点。
+     */
+    @Test
+    void sameTransactionElevatedScopeShouldExposeAllTenantsAndRestoreAfterExit() {
+        threadContext.setTenantID("tenant-A");
+        elevatedTenantTestService.saveNoteForTenant("tenant-A", 101L, "note-A");
+        elevatedTenantTestService.saveNoteForTenant("tenant-B", 102L, "note-B");
+        assertThat(elevatedTenantTestService.listAllNotes()).hasSize(2);
+
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            final Session sessionBefore = entityManager.unwrap(Session.class);
+            assertThat(TenantPrivilege.isActive()).isFalse();
+
+            assertThat(tenantNoteRepository.count()).isEqualTo(1);
+
+            TenantPrivilege.elevated(() -> {
+                assertThat(tenantNoteRepository.count())
+                        .as("elevated query within already-stabilized session should bypass tenant filter")
+                        .isEqualTo(2);
+            });
+
+            assertThat(tenantNoteRepository.count()).isEqualTo(1);
+
+            final Session sessionAfter = entityManager.unwrap(Session.class);
+            assertThat(sessionAfter).isSameAs(sessionBefore);
+        });
+    }
+
+    /**
+     * 写入面契约（设计意图，014 issue §3）：已定型 session 内提权写入显式异租户必须 fail-fast。
+     * <p>
+     * Hibernate {@code @TenantId} 的 assigned-id 校验（TenantIdGeneration）基于 session 定型租户，
+     * 与提权状态无关：session 打开时定型 tenant-A，随后提权写入 tenant-B → flush 时抛
+     * PropertyValueException，事务回滚、库中无该数据。
+     * 因此提权必须罩住事务边界（正确用法是 elevatedInTransaction / 手册铁律①），
+     * 使 session 打开时租户模式即按提权定型，显式异租户写入才会被 Hibernate 放行。
+     */
+    @Test
+    void sameTransactionElevatedWriteShouldFailFastWhenSessionAlreadyStabilizedAreas() {
+        final LocalDateTime now = LocalDateTime.now();
+        threadContext.setTenantID("tenant-A");
+
+        assertThatThrownBy(() -> new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            entityManager.unwrap(Session.class);
+            assertThat(TenantPrivilege.isActive()).isFalse();
+
+            TenantPrivilege.elevated(() -> {
+                final TestTenantNotePO po = new TestTenantNotePO();
+                po.setId(202L);
+                po.setTenantID("tenant-B");
+                po.setContent("note-B");
+                po.setCreateTime(now);
+                po.setUpdateTime(now);
+                tenantNoteRepository.save(po);
+                // 显式 flush：让 @TenantId assigned-id 校验立刻执行（而非推迟到后续查询的 auto-flush）
+                entityManager.flush();
+            });
+        })).isInstanceOf(RuntimeException.class);
+
+        assertThat(elevatedTenantTestService.listAllNotes())
+                .extracting(TestTenantNotePO::getId)
+                .doesNotContain(202L);
     }
 }

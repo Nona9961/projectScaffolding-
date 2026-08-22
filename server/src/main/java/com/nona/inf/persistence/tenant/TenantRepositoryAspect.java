@@ -1,5 +1,6 @@
 package com.nona.inf.persistence.tenant;
 
+import com.nona.annotation.ScaffoldGenerated;
 import com.nona.inf.context.TenantContextAccessor;
 import com.nona.inf.context.TenantPrivilege;
 import com.nona.inf.persistence.po.TenantScopedBasePO;
@@ -9,7 +10,6 @@ import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.springframework.stereotype.Component;
-import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * 多租户隔离（ADR-001 / ADR-007）
@@ -17,7 +17,7 @@ import com.nona.annotation.ScaffoldGenerated;
  * 基于 Hibernate discriminator multi-tenancy（@TenantId）实现 tenant-scoped 的自动隔离（读 fail-closed；写自动注入/校验 tenantID）。
  * 写门禁判断源为 {@link com.nona.inf.context.TenantPrivilege}：提权作用域内放行实体显式合法租户，非提权状态强制与当前租户一致。
  *
- * @author nona
+ * @author nona9961
  */
 @Aspect
 @Component
@@ -28,7 +28,20 @@ public class TenantRepositoryAspect {
     private final TenantContextAccessor tenantContextAccessor;
 
     /**
-     * 对 Spring Data Repository 的写入操作（save/saveAll）应用租户规则。
+     * 规范化 tenantID：{@code null} 或空白字符串视为缺失。
+     *
+     * @param tenantID 原始 tenantID
+     * @return 规范化后的 tenantID；缺失则返回 {@code null}
+     */
+    private static String normalizeTenantID(String tenantID) {
+        if (tenantID == null || tenantID.isBlank()) {
+            return null;
+        }
+        return tenantID;
+    }
+
+    /**
+     * 对 Spring Data Repository 的写入操作（save/saveAndFlush/saveAll/saveAllAndFlush）应用租户规则。
      *
      * @param joinPoint AOP 连接点
      * @return 原方法返回值
@@ -41,14 +54,14 @@ public class TenantRepositoryAspect {
     }
 
     /**
-     * 若当前调用为写入操作（save/saveAll），则对参数应用租户写入门禁。
+     * 若当前调用为写入操作（save/saveAndFlush/saveAll/saveAllAndFlush），则对参数应用租户写入门禁。
      *
      * @param joinPoint AOP 连接点
      */
     private void enforceTenantWriteIfNeeded(ProceedingJoinPoint joinPoint) {
         final String methodName = joinPoint.getSignature().getName();
-        if ("save".equals(methodName)) {
-            Object[] args = joinPoint.getArgs();
+        if ("save".equals(methodName) || "saveAndFlush".equals(methodName)) {
+            final Object[] args = joinPoint.getArgs();
             if (args == null || args.length == 0) {
                 return;
             }
@@ -56,8 +69,8 @@ public class TenantRepositoryAspect {
             return;
         }
 
-        if ("saveAll".equals(methodName)) {
-            Object[] args = joinPoint.getArgs();
+        if ("saveAll".equals(methodName) || "saveAllAndFlush".equals(methodName)) {
+            final Object[] args = joinPoint.getArgs();
             if (args == null || args.length == 0) {
                 return;
             }
@@ -97,14 +110,11 @@ public class TenantRepositoryAspect {
             }
             BusinessAssert.assertNonNull(tenantID,
                     "tenantID is required to inject into tenant-scoped write");
-            BusinessAssert.assertTrue(!TenantContextAccessor.MISSING_TENANT_ID.equals(tenantID),
-                    "invalid tenantID: {}", tenantID);
             tenantScopedPO.setTenantID(tenantID);
             return;
         }
 
         BusinessAssert.assertNonNull(tenantID, "tenantID is required for tenant-scoped write operation");
-        BusinessAssert.assertTrue(!TenantContextAccessor.MISSING_TENANT_ID.equals(tenantID), "invalid tenantID: {}", tenantID);
 
         if (entityTenantID == null) {
             tenantScopedPO.setTenantID(tenantID);
@@ -113,18 +123,5 @@ public class TenantRepositoryAspect {
 
         BusinessAssert.assertTrue(tenantID.equals(entityTenantID),
                 "cross-tenant write is forbidden. currentTenant={}, entityTenant={}", tenantID, entityTenantID);
-    }
-
-    /**
-     * 规范化 tenantID：{@code null} 或空白字符串视为缺失。
-     *
-     * @param tenantID 原始 tenantID
-     * @return 规范化后的 tenantID；缺失则返回 {@code null}
-     */
-    private static String normalizeTenantID(String tenantID) {
-        if (tenantID == null || tenantID.isBlank()) {
-            return null;
-        }
-        return tenantID;
     }
 }

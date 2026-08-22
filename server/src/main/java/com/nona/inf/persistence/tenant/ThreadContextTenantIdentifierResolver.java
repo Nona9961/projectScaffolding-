@@ -1,11 +1,11 @@
 package com.nona.inf.persistence.tenant;
 
+import com.nona.annotation.ScaffoldGenerated;
 import com.nona.inf.context.TenantContextAccessor;
 import com.nona.inf.context.TenantPrivilege;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.context.spi.CurrentTenantIdentifierResolver;
 import org.springframework.stereotype.Component;
-import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * Hibernate tenant identifier resolver（discriminator multi-tenancy）
@@ -14,7 +14,7 @@ import com.nona.annotation.ScaffoldGenerated;
  * - tenant 缺失：返回 {@link TenantContextAccessor#MISSING_TENANT_ID} 实现 fail-closed
  * - 提权作用域：TenantPrivilege 激活时返回 root tenant，绕过 Hibernate 内置的 _tenantId filter
  *
- * @author nona
+ * @author nona9961
  */
 @Component
 @RequiredArgsConstructor

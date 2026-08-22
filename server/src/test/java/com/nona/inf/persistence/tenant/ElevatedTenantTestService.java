@@ -1,5 +1,6 @@
 package com.nona.inf.persistence.tenant;
 
+import com.nona.annotation.ScaffoldGenerated;
 import com.nona.inf.context.TenantPrivilege;
 import com.nona.inf.persistence.repository.jpa.TestGlobalNoteRepository;
 import com.nona.inf.persistence.repository.jpa.TestTenantNoteRepository;
@@ -8,14 +9,37 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.Callable;
-import com.nona.annotation.ScaffoldGenerated;
 
+/**
+ * 测试用跨租户服务：封装提权作用域内的读写操作，供租户机制集成测试复用。
+ *
+ * @author nona9961
+ */
 @Service
 @ScaffoldGenerated
-class CrossTenantTestService {
+class ElevatedTenantTestService {
 
     private final TestTenantNoteRepository tenantNoteRepository;
     private final TestGlobalNoteRepository globalNoteRepository;
+
+    /**
+     * 进入提权作用域执行有返回值操作；repository 操作不抛受检异常，此处收拢以免污染调用方签名。
+     *
+     * @param action 提权操作
+     * @param <T> 返回类型
+     * @return 操作结果
+     */
+    private static <T> T elevate(Callable<T> action) {
+        try {
+            return TenantPrivilege.elevated(action);
+        }
+        catch (RuntimeException e) {
+            throw e;
+        }
+        catch (Exception e) {
+            throw new IllegalStateException("unexpected checked exception in elevated action", e);
+        }
+    }
 
     /**
      * 构造测试用跨租户服务。
@@ -23,7 +47,7 @@ class CrossTenantTestService {
      * @param tenantNoteRepository 租户隔离 note 仓库
      * @param globalNoteRepository 全局 note 仓库
      */
-    CrossTenantTestService(TestTenantNoteRepository tenantNoteRepository, TestGlobalNoteRepository globalNoteRepository) {
+    ElevatedTenantTestService(TestTenantNoteRepository tenantNoteRepository, TestGlobalNoteRepository globalNoteRepository) {
         this.tenantNoteRepository = tenantNoteRepository;
         this.globalNoteRepository = globalNoteRepository;
     }
@@ -105,33 +129,14 @@ class CrossTenantTestService {
      */
     void saveNoteWithoutTenantID(Long id, String content) {
         TenantPrivilege.elevated(() -> {
-            LocalDateTime now = LocalDateTime.now();
+            final LocalDateTime now = LocalDateTime.now();
 
-            TestTenantNotePO po = new TestTenantNotePO();
+            final TestTenantNotePO po = new TestTenantNotePO();
             po.setId(id);
             po.setContent(content);
             po.setCreateTime(now);
             po.setUpdateTime(now);
             tenantNoteRepository.save(po);
         });
-    }
-
-    /**
-     * 进入提权作用域执行有返回值操作；repository 操作不抛受检异常，此处收拢以免污染调用方签名。
-     *
-     * @param action 提权操作
-     * @param <T> 返回类型
-     * @return 操作结果
-     */
-    private static <T> T elevate(Callable<T> action) {
-        try {
-            return TenantPrivilege.elevated(action);
-        }
-        catch (RuntimeException e) {
-            throw e;
-        }
-        catch (Exception e) {
-            throw new IllegalStateException("unexpected checked exception in elevated action", e);
-        }
     }
 }
