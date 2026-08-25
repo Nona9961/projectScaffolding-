@@ -276,6 +276,42 @@ public void saveForeign() {
 `crossTenantAnnotatedWriteShouldStillRequireElevation`（AC：写门禁不受注解影响）、
 `elevationInsideAnnotatedMethodShouldAllowForeignWrite`（组合）。
 
+#### 覆盖边界与权衡（契约）
+
+**① 拦截点只覆盖 Spring Data repository 层**：数据访问点自查挂在 `TenantRepositoryAspect`
+（`this(org.springframework.data.repository.Repository)`）上，仅保护走 Spring Data
+Repository 代理的路径。以下直用**不受**数据访问点自查保护：
+
+- `EntityManager` 直用（`persist` / `createQuery` / `find` 等）与 `JdbcTemplate` 直用：绕过
+  拦截点，第二保险失效——已定型 session 内 `elevated` / `@CrossTenant` 对其**静默失效**，
+  filter 保持进入作用域前的状态，查询仍按原租户过滤；失效方向 fail-closed 安全（失去的是
+  「放行」而不是「过滤」）；新 session 场景不受影响（resolver 第一保险仍在）；
+- 原生 SQL（`@Query(nativeQuery = true)` / `createNativeQuery` / `JdbcTemplate` 手写 SQL）：
+  Hibernate filter 对原生 SQL **不生效**（native 查询直接使用给定 SQL，不参与 filter 机制）
+  ——无论是否经过拦截点，tenant-scoped 数据走原生 SQL 既不过滤也不放行，必须自行携带租户
+  条件；
+- 现状安全：生产代码零此类直用（grep 已证）。契约：未来引入直用路径并期望租户隔离/放行时，
+  必须把读下沉到 repository 层（或自行处理），不得依赖本机制。症状排查见附录 A 对应条目。
+
+**② 常态查询的固定开销可接受**：非 bypass 时每次 repository 访问承担固定自检
+（`hasResource` + `unwrap(Session)` + `enableFilter` + `setParameter`）。可接受理由：
+
+- 拦截点本就存在——写门禁早已拦截每次 repository 访问，读自查只是同一方法顶部的一次状态
+  读取，没有新增代理层级；
+- 线程未绑定 EntityManager 时走快速路径（`hasResource` 一次查找即返回，不做 unwrap）；
+- filter 名与参数同名同值（`_tenantId` / 当前租户）：`enabledFilters` 按 filter 名判等、查询
+  计划缓存键只含 filter 名集不含参数值 → 计划复用不退化。
+
+**③ 注解内新 session 定型 ROOT 是已知权衡**：`@CrossTenant` 作用域内**新建**的 session 经
+resolver 自查定型为 ROOT（`isAnyReadBypassActive` → `ROOT_TENANT_ID`）。ROOT 模式下
+Hibernate 写侧校验（`TenantIdGeneration`）保留实体显式 `tenantID`——若绕过写门禁直写
+（如 `EntityManager.persist`），显式异租户值会被保留落库。该风险由写门禁兜底：非提权写强制
+与当前上下文租户一致（缺失注入、一致放行、不一致拒绝）——
+`crossTenantAnnotatedWriteShouldAllowCurrentTenant`（注解内写当前租户照常落库为本租户）与
+`crossTenantAnnotatedWriteShouldStillRequireElevation`（注解内写异租户照常拒绝）共同钉住；
+异租户写唯一通道仍是显式 `elevated`。此 ROOT 定型是「注解只关读」语义下的既定权衡：注解
+不改写侧归属、绝不构成写放行。
+
 ---
 
 ## 5. 异步场景
@@ -442,6 +478,8 @@ filter；未来更换 MyBatis 等框架时：
   配对模板改造，清理放进 `finally` |
 | 升级/换依赖后 `findById` 能读到其他租户 | Hibernate 降级到 ≤ 6.4，HHH-16830 修复丢失 |
   锁定 ≥ 7.4.x 并回归 `tenantScopedFindByIdShouldBeFiltered`（§8） |
-| `@CrossTenant` 标注了却不生效（读仍是单租户过滤） | Spring AOP 代理语义：同 bean 内自调用
-  不经过切面；目标类不是 Spring bean（`new` 出来）/ `final` 类 / `private` 方法 | 跨租户读下沉到
-  独立 bean 的 public 方法并注入调用；确认类可被代理（§4.5） |
+| `@CrossTenant` 标注了却不生效（读仍是单租户过滤） | ① Spring AOP 代理语义：同 bean 内自调用
+  不经过切面；目标类不是 Spring bean（`new` 出来）/ `final` 类 / `private` 方法；
+  ② 注解已生效，但数据访问直用 EM/JdbcTemplate/原生 SQL，绕过了 repository 层拦截点
+  （§4.5「覆盖边界与权衡」） | ① 跨租户读下沉到独立 bean 的 public 方法并注入调用；确认类
+  可被代理；② 读路径下沉到 repository 层执行，勿直用 EM/原生 SQL（§4.5） |
