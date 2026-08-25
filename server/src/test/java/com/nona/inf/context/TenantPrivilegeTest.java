@@ -10,6 +10,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -90,8 +91,56 @@ class TenantPrivilegeTest {
         assertThat(inThread).isFalse();
     }
 
+    /**
+     * 读放行作用域异常路径契约：作用域内抛出的 {@link RuntimeException} 原样透传（同类型同消息），
+     * 且退出后状态解绑恢复（不残留）；与提权版 {@code callableExceptionPassesThroughAndUnbinds} 同构。
+     */
+    @Test
+    void readBypassExceptionPassesThroughAndUnbinds() {
+        assertThatThrownBy(() -> TenantPrivilege.withReadBypass((Callable<Void>) () -> {
+            throw new IllegalStateException("boom");
+        }))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("boom");
+
+        assertThat(TenantPrivilege.isReadBypassActive()).isFalse();
+        assertThat(TenantPrivilege.isAnyReadBypassActive()).isFalse();
+    }
+
+    /**
+     * 读放行作用域受检异常契约：{@code withReadBypass(Callable)} 声明 {@code throws Exception}，
+     * 受检异常原样透传（核心层 API 不透传包装——切面层 CrossTenantAspect 的包装是另一层职责）。
+     */
+    @Test
+    void readBypassCheckedExceptionPassesThrough() throws Exception {
+        assertThatThrownBy(() -> TenantPrivilege.withReadBypass((Callable<Void>) () -> {
+            throw new java.io.IOException("io-boom");
+        }))
+                .isInstanceOf(java.io.IOException.class)
+                .hasMessage("io-boom");
+
+        assertThat(TenantPrivilege.isReadBypassActive()).isFalse();
+    }
+
+    /**
+     * 读放行作用域内正常返回值透传。
+     */
+    @Test
+    void readBypassScopeReturnsValue() throws Exception {
+        String result = TenantPrivilege.withReadBypass(() -> {
+            assertThat(TenantPrivilege.isReadBypassActive()).isTrue();
+            return "ok";
+        });
+
+        assertThat(result).isEqualTo("ok");
+        assertThat(TenantPrivilege.isReadBypassActive()).isFalse();
+    }
+
     // ===== 读放行（@CrossTenant）状态：与提权分离，读写粒度独立 =====
 
+    /**
+     * 读放行作用域进入/退出状态恢复。
+     */
     @Test
     void readBypassScopeActivatesAndRestores() {
         AtomicBoolean inside = new AtomicBoolean(false);
