@@ -297,7 +297,7 @@ executor.setTaskDecorator(new RequestContextPropagatingTaskDecorator(tenantConte
 ScopedValue 默认不跨线程。父线程正在提权或 `@CrossTenant` 读放行时提交的异步任务，
 worker 内 `TenantPrivilege.isActive()` 与 `isReadBypassActive()` 均为 `false`
 （`TenantPrivilegeTest#elevationDoesNotLeakIntoNewThread`、
-`readBypassScopeDoesNotActivateWriteElevation`）。
+`readBypassDoesNotLeakIntoNewThread`）。
 worker 内需要跨租户能力时必须在任务体内**显式声明**：
 
 ```java

@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
  * <p>
  * - 默认：使用当前 ThreadContext 的 tenantID
  * - tenant 缺失：返回 {@link TenantContextAccessor#MISSING_TENANT_ID} 实现 fail-closed
- * - 提权作用域：TenantPrivilege 激活时返回 root tenant，绕过 Hibernate 内置的 _tenantId filter
+ * - 任一读放行作用域（提权或 {@code @CrossTenant}）：返回 root tenant，绕过 Hibernate 内置的 _tenantId filter
  *
  * @author nona9961
  */
