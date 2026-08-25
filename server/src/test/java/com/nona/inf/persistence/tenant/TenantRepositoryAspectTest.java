@@ -50,6 +50,9 @@ class TenantRepositoryAspectTest {
     private ElevatedTenantTestService elevatedTenantTestService;
 
     @Autowired
+    private CrossTenantTestService crossTenantTestService;
+
+    @Autowired
     private PlatformTransactionManager transactionManager;
 
     @Autowired
@@ -501,6 +504,131 @@ class TenantRepositoryAspectTest {
             final Session sessionAfter = entityManager.unwrap(Session.class);
             assertThat(sessionAfter).isSameAs(sessionBefore);
         });
+    }
+
+    /**
+     * 验证 {@code @CrossTenant} 注解方法内读全租户可见（无事务/新 session 场景：resolver 自查第一重保险），
+     * 出方法后立即恢复隔离。
+     */
+    @Test
+    void crossTenantAnnotatedReadShouldExposeAllTenantsAndRestoreIsolation() {
+        final LocalDateTime now = LocalDateTime.now();
+
+        threadContext.setTenantID("t1");
+        TestTenantNotePO t1 = new TestTenantNotePO();
+        t1.setId(301L);
+        t1.setContent("note-t1");
+        t1.setCreateTime(now);
+        t1.setUpdateTime(now);
+        tenantNoteRepository.save(t1);
+
+        threadContext.setTenantID("t2");
+        TestTenantNotePO t2 = new TestTenantNotePO();
+        t2.setId(302L);
+        t2.setContent("note-t2");
+        t2.setCreateTime(now);
+        t2.setUpdateTime(now);
+        tenantNoteRepository.save(t2);
+
+        threadContext.setTenantID("t1");
+        assertThat(tenantNoteRepository.findAll()).hasSize(1);
+
+        List<TestTenantNotePO> all = crossTenantTestService.listAllNotes();
+        assertThat(all).hasSize(2);
+
+        assertThat(tenantNoteRepository.findAll()).hasSize(1);
+    }
+
+    /**
+     * 验证 {@code @CrossTenant} 在已定型 session 内生效（同事务场景：数据访问点自查第二重保险，M2 契约同构）
+     * 且退出后恢复。
+     */
+    @Test
+    void crossTenantAnnotatedReadShouldBypassInStabilizedSession() {
+        threadContext.setTenantID("tenant-A");
+        elevatedTenantTestService.saveNoteForTenant("tenant-A", 311L, "note-A");
+        elevatedTenantTestService.saveNoteForTenant("tenant-B", 312L, "note-B");
+
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            assertThat(tenantNoteRepository.count()).isEqualTo(1);
+
+            assertThat(crossTenantTestService.getNote(311L)).isNotNull();
+            assertThat(crossTenantTestService.getNote(312L)).isNotNull();
+
+            assertThat(tenantNoteRepository.count()).isEqualTo(1);
+        });
+    }
+
+    /**
+     * 验证嵌套 {@code @CrossTenant}（外层注解内调用内层注解方法）安全：内层退出不影响外层，
+     * 全部退出后恢复隔离。
+     */
+    @Test
+    void crossTenantNestedAnnotatedScopesAreSafe() {
+        final LocalDateTime now = LocalDateTime.now();
+
+        threadContext.setTenantID("t1");
+        TestTenantNotePO t1 = new TestTenantNotePO();
+        t1.setId(321L);
+        t1.setContent("note-t1");
+        t1.setCreateTime(now);
+        t1.setUpdateTime(now);
+        tenantNoteRepository.save(t1);
+
+        threadContext.setTenantID("t2");
+        TestTenantNotePO t2 = new TestTenantNotePO();
+        t2.setId(322L);
+        t2.setContent("note-t2");
+        t2.setCreateTime(now);
+        t2.setUpdateTime(now);
+        tenantNoteRepository.save(t2);
+
+        threadContext.setTenantID("t1");
+        assertThat(crossTenantTestService.listAllNotesNested()).hasSize(2);
+        assertThat(tenantNoteRepository.findAll()).hasSize(1);
+    }
+
+    /**
+     * AC 钉住：注解开启读放行时，写门禁仍拒绝未提权异租户写（注解只影响读）。
+     */
+    @Test
+    void crossTenantAnnotatedWriteShouldStillRequireElevation() {
+        threadContext.setTenantID("t1");
+
+        assertThatThrownBy(() -> crossTenantTestService.saveForeignTenantNote("t2", 331L, "illegal"))
+                .isInstanceOf(BusinessException.class);
+        assertThat(elevatedTenantTestService.listAllNotes()).isEmpty();
+    }
+
+    /**
+     * 验证注解不阻断写：注解方法内写当前租户实体照常注入/落库。
+     */
+    @Test
+    void crossTenantAnnotatedWriteShouldAllowCurrentTenant() {
+        threadContext.setTenantID("t1");
+
+        crossTenantTestService.saveCurrentTenantNote(341L, "note-current");
+
+        threadContext.setTenantID("t1");
+        assertThat(tenantNoteRepository.findAll()).hasSize(1);
+        assertThat(tenantNoteRepository.findAll().get(0).getTenantID()).isEqualTo("t1");
+    }
+
+    /**
+     * 验证注解 × 提权组合：注解读放行内再提权，读全租户仍成立；显式异租户写经提权放行。
+     */
+    @Test
+    void elevationInsideAnnotatedMethodShouldAllowForeignWrite() {
+        threadContext.setTenantID("t1");
+
+        crossTenantTestService.saveForeignTenantNoteWithElevation("t2", 351L, "elevated-note");
+
+        assertThat(elevatedTenantTestService.countAllNotes()).isEqualTo(1);
+        assertThat(elevatedTenantTestService.getNote(351L).getTenantID()).isEqualTo("t2");
+
+        threadContext.setTenantID("t1");
+        assertThat(tenantNoteRepository.count()).isZero();
+        assertThat(crossTenantTestService.countAllNotesWithElevation()).isEqualTo(1);
     }
 
     /**
