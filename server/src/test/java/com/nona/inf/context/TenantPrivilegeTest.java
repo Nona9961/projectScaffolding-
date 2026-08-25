@@ -115,6 +115,32 @@ class TenantPrivilegeTest {
                         .isFalse());
     }
 
+    /**
+     * ScopedValue 不跨线程传播的 fail-fast 语义：主线程处于读放行作用域时启动的新线程内
+     * {@link TenantPrivilege#isReadBypassActive()} 必须为 false——读放行状态跟代码位置走，
+     * 不随线程漂移（与提权对称，见 {@link #elevationDoesNotLeakIntoNewThread()}）。
+     */
+    @Test
+    void readBypassDoesNotLeakIntoNewThread() throws InterruptedException {
+        AtomicBoolean inThread = new AtomicBoolean(false);
+
+        TenantPrivilege.withReadBypass((Runnable) () -> {
+            Thread thread = new Thread(() -> inThread.set(TenantPrivilege.isReadBypassActive()));
+            thread.start();
+            try {
+                thread.join(5_000);
+            }
+            catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("interrupted while waiting for read-bypass leak probe", e);
+            }
+
+            assertThat(thread.isAlive()).isFalse();
+        });
+
+        assertThat(inThread).isFalse();
+    }
+
     @Test
     void elevationAndReadBypassAreIndependentAndCompose() {
         List<Boolean> observed = new ArrayList<>();
