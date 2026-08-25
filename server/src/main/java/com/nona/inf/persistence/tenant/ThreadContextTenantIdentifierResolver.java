@@ -34,11 +34,12 @@ public class ThreadContextTenantIdentifierResolver implements CurrentTenantIdent
     /**
      * 为 Hibernate 解析当前会话的 tenant identifier。
      *
-     * @return 当前 tenant identifier；提权作用域内返回 {@link #ROOT_TENANT_ID}，tenant 缺失时返回 {@link TenantContextAccessor#MISSING_TENANT_ID}
+     * @return 当前 tenant identifier；任一读放行作用域（提权或 {@code @CrossTenant}）内返回
+     *     {@link #ROOT_TENANT_ID}，tenant 缺失时返回 {@link TenantContextAccessor#MISSING_TENANT_ID}
      */
     @Override
     public String resolveCurrentTenantIdentifier() {
-        if (TenantPrivilege.isActive()) {
+        if (TenantPrivilege.isAnyReadBypassActive()) {
             return ROOT_TENANT_ID;
         }
         return tenantContextAccessor.getTenantIDOrMissing();

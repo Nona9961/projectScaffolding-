@@ -90,6 +90,52 @@ class TenantPrivilegeTest {
         assertThat(inThread).isFalse();
     }
 
+    // ===== 读放行（@CrossTenant）状态：与提权分离，读写粒度独立 =====
+
+    @Test
+    void readBypassScopeActivatesAndRestores() {
+        AtomicBoolean inside = new AtomicBoolean(false);
+
+        TenantPrivilege.withReadBypass((Runnable) () -> {
+            assertThat(TenantPrivilege.isReadBypassActive()).isTrue();
+            assertThat(TenantPrivilege.isAnyReadBypassActive()).isTrue();
+            inside.set(true);
+        });
+
+        assertThat(inside).isTrue();
+        assertThat(TenantPrivilege.isReadBypassActive()).isFalse();
+        assertThat(TenantPrivilege.isAnyReadBypassActive()).isFalse();
+    }
+
+    @Test
+    void readBypassScopeDoesNotActivateWriteElevation() {
+        TenantPrivilege.withReadBypass((Runnable) () ->
+                assertThat(TenantPrivilege.isActive())
+                        .as("read bypass must NOT activate write elevation (read/write separation)")
+                        .isFalse());
+    }
+
+    @Test
+    void elevationAndReadBypassAreIndependentAndCompose() {
+        List<Boolean> observed = new ArrayList<>();
+
+        TenantPrivilege.elevated((Runnable) () -> {
+            observed.add(TenantPrivilege.isActive());
+            observed.add(TenantPrivilege.isAnyReadBypassActive());
+
+            TenantPrivilege.withReadBypass((Runnable) () -> {
+                observed.add(TenantPrivilege.isReadBypassActive());
+                observed.add(TenantPrivilege.isAnyReadBypassActive());
+            });
+
+            observed.add(TenantPrivilege.isAnyReadBypassActive());
+        });
+
+        observed.add(TenantPrivilege.isAnyReadBypassActive());
+
+        assertThat(observed).containsExactly(true, true, true, true, true, false);
+    }
+
     // ===== M1 契约：elevatedInTransaction（Mockito mock 事务模板，绕开真实事务管理） =====
 
     /**

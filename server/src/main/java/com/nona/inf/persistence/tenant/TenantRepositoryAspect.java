@@ -28,6 +28,11 @@ public class TenantRepositoryAspect {
     private final TenantContextAccessor tenantContextAccessor;
 
     /**
+     * 存储无关的租户读隔离适配层（JPA 实现）：每次数据访问前按当前状态启停租户 filter。
+     */
+    private final TenantReadIsolationAdapter tenantReadIsolationAdapter;
+
+    /**
      * 规范化 tenantID：{@code null} 或空白字符串视为缺失。
      *
      * @param tenantID 原始 tenantID
@@ -41,7 +46,8 @@ public class TenantRepositoryAspect {
     }
 
     /**
-     * 对 Spring Data Repository 的写入操作（save/saveAndFlush/saveAll/saveAllAndFlush）应用租户规则。
+     * 对 Spring Data Repository 的所有访问应用租户规则：
+     * 先由适配层应用读隔离状态（读放行/恢复过滤），再对写入操作执行写门禁。
      *
      * @param joinPoint AOP 连接点
      * @return 原方法返回值
@@ -49,6 +55,7 @@ public class TenantRepositoryAspect {
      */
     @Around("this(org.springframework.data.repository.Repository)")
     public Object applyTenantRules(ProceedingJoinPoint joinPoint) throws Throwable {
+        tenantReadIsolationAdapter.applyReadIsolation();
         enforceTenantWriteIfNeeded(joinPoint);
         return joinPoint.proceed();
     }

@@ -9,7 +9,12 @@ import java.util.Objects;
 import java.util.concurrent.Callable;
 
 /**
- * 租户提权作用域：作用域内允许实体显式携带异租户值写入、读过滤由持久化适配层放行。
+ * 租户提权与读放行作用域（纯状态）：
+ * <ul>
+ *   <li>{@link #elevated(Runnable)} — 提权：作用域内写门禁放行实体显式异租户，读路径由持久化适配层自行放行</li>
+ *   <li>{@link #withReadBypass(Runnable)} — 读放行：作用域内读路径关闭租户过滤（{@code @CrossTenant} 注解使用），写门禁不受影响</li>
+ * </ul>
+ * 持久化适配层通过 {@link #isAnyReadBypassActive()} 在每次数据访问时自查状态决定过滤行为（设计 D1/D2）。
  * 基于 ScopedValue：出作用域自动恢复、块内不可篡改、默认不跨线程传播。
  *
  * @author nona9961
@@ -21,9 +26,9 @@ public final class TenantPrivilege {
     private static final ScopedValue<Boolean> ELEVATED = ScopedValue.newInstance();
 
     /**
-     * 提权作用域生命周期监听器（持久化适配层注册，用于读路径 filter 切换）；{@code null} 表示未注册。
+     * 读放行状态（{@code @CrossTenant} 作用域）；仅影响读路径过滤，不参与写门禁判断。
      */
-    private static volatile TenantScopeListener tenantScopeListener;
+    private static final ScopedValue<Boolean> READ_BYPASS = ScopedValue.newInstance();
 
     /**
      * 租户上下文访问器（Spring 组件初始化时注册，审计日志取 identity/tenantID 用）；{@code null} 表示未注册。
@@ -44,13 +49,7 @@ public final class TenantPrivilege {
     public static void elevated(Runnable action) {
         log.info("[TenantPrivilege] elevated scope enter, action={}, alreadyActive={}, identity={}, tenantID={}, at={}",
                 action.getClass().getSimpleName(), isActive(), resolveIdentity(), resolveTenantID(), Instant.now());
-        notifyListenerEnter();
-        try {
-            ScopedValue.where(ELEVATED, Boolean.TRUE).run(action);
-        }
-        finally {
-            notifyListenerExit();
-        }
+        ScopedValue.where(ELEVATED, Boolean.TRUE).run(action);
     }
 
     /**
@@ -64,13 +63,32 @@ public final class TenantPrivilege {
     public static <T> T elevated(Callable<T> action) throws Exception {
         log.info("[TenantPrivilege] elevated scope enter, action={}, alreadyActive={}, identity={}, tenantID={}, at={}",
                 action.getClass().getSimpleName(), isActive(), resolveIdentity(), resolveTenantID(), Instant.now());
-        notifyListenerEnter();
-        try {
-            return ScopedValue.where(ELEVATED, Boolean.TRUE).call(action::call);
-        }
-        finally {
-            notifyListenerExit();
-        }
+        return ScopedValue.where(ELEVATED, Boolean.TRUE).call(action::call);
+    }
+
+    /**
+     * 进入读放行作用域执行无返回值操作（仅关闭读路径租户过滤；写门禁不受影响）。
+     *
+     * @param action 读放行操作
+     */
+    public static void withReadBypass(Runnable action) {
+        log.info("[TenantPrivilege] read-bypass scope enter, action={}, alreadyActive={}, identity={}, tenantID={}, at={}",
+                action.getClass().getSimpleName(), isReadBypassActive(), resolveIdentity(), resolveTenantID(), Instant.now());
+        ScopedValue.where(READ_BYPASS, Boolean.TRUE).run(action);
+    }
+
+    /**
+     * 进入读放行作用域执行有返回值操作（仅关闭读路径租户过滤；写门禁不受影响）。
+     *
+     * @param action 读放行操作
+     * @param <T>    返回类型
+     * @return 操作结果
+     * @throws Exception 操作抛出的异常原样透传
+     */
+    public static <T> T withReadBypass(Callable<T> action) throws Exception {
+        log.info("[TenantPrivilege] read-bypass scope enter, action={}, alreadyActive={}, identity={}, tenantID={}, at={}",
+                action.getClass().getSimpleName(), isReadBypassActive(), resolveIdentity(), resolveTenantID(), Instant.now());
+        return ScopedValue.where(READ_BYPASS, Boolean.TRUE).call(action::call);
     }
 
     /**
@@ -101,7 +119,7 @@ public final class TenantPrivilege {
     }
 
     /**
-     * 当前是否处于提权作用域。
+     * 当前是否处于提权作用域（写门禁的唯一判断源）。
      *
      * @return 提权中返回 true
      */
@@ -110,14 +128,21 @@ public final class TenantPrivilege {
     }
 
     /**
-     * 注册提权作用域生命周期监听器；传 {@code null} 忽略（幂等）。
+     * 当前是否处于读放行作用域（{@code @CrossTenant}）。
      *
-     * @param listener 监听器；{@code null} 忽略
+     * @return 读放行中返回 true
      */
-    public static void registerTenantScopeListener(TenantScopeListener listener) {
-        if (listener != null) {
-            tenantScopeListener = listener;
-        }
+    public static boolean isReadBypassActive() {
+        return READ_BYPASS.isBound() && READ_BYPASS.get();
+    }
+
+    /**
+     * 当前是否处于任一读放行状态（提权或读放行作用域）——持久化适配层自查读隔离的唯一判断源。
+     *
+     * @return 任一读放行激活返回 true
+     */
+    public static boolean isAnyReadBypassActive() {
+        return isActive() || isReadBypassActive();
     }
 
     /**
@@ -128,24 +153,6 @@ public final class TenantPrivilege {
     public static void registerTenantContextAccessor(TenantContextAccessor accessor) {
         if (accessor != null) {
             tenantContextAccessor = accessor;
-        }
-    }
-
-    /**
-     * 通知监听器进入提权作用域（ScopedValue 绑定前）。
-     */
-    private static void notifyListenerEnter() {
-        if (tenantScopeListener != null) {
-            tenantScopeListener.onElevatedEnter();
-        }
-    }
-
-    /**
-     * 通知监听器退出提权作用域（ScopedValue 解绑后，本层已解绑）。
-     */
-    private static void notifyListenerExit() {
-        if (tenantScopeListener != null) {
-            tenantScopeListener.onElevatedExit();
         }
     }
 
