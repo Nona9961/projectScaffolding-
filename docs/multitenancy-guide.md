@@ -2,7 +2,8 @@
 
 > 面向脚手架使用者的操作手册：怎么做、什么不能做、做错了是什么现象。
 > 技术事实以仓库当前实现为准（关键类：`TenantContextAccessor` / `TenantPrivilege` /
-> `ThreadContextTenantIdentifierResolver` / `TenantRepositoryAspect`）。
+> `ThreadContextTenantIdentifierResolver` / `TenantRepositoryAspect` /
+> `TenantReadIsolationAdapter`）。
 
 ---
 
@@ -24,17 +25,18 @@
 
 这是两套互不相干的机制，混为一谈是绝大多数误用的根源：
 
-| | 身份三元组 | 提权状态 |
+| | 身份三元组 | 提权/读放行状态 |
 |---|-----------|----------|
-| 内容 | `tenantID` / `role` / `identity` | 是否处于提权作用域（布尔） |
+| 内容 | `tenantID` / `role` / `identity` | 是否处于提权 / 读放行作用域（布尔） |
 | 载体 | `ThreadContext`（request-scoped bean）+
-  异步快照 `ContextSnapshot` | `TenantPrivilege` 内的 `ScopedValue<Boolean>` |
+  异步快照 `ContextSnapshot` | `TenantPrivilege` 内的两个 `ScopedValue<Boolean>`
+  （`ELEVATED` / `READ_BYPASS`） |
 | 跟随谁 | **随人走**：请求带着它流转，
-  异步经快照传播到 worker | **跟代码位置走**：仅在 `elevated { ... }`
-  块内为真，出块即恢复，不随线程传播 |
+  异步经快照传播到 worker | **跟代码位置走**：仅在 `elevated { ... }` /
+  `withReadBypass(...)`（`@CrossTenant`）块内为真，出块即恢复，不随线程传播 |
 
-身份回答「我是谁、我在哪个租户」；提权回答「这段代码此刻是否被允许跨租户」。
-提权不会改变你的租户身份，也不会传播给异步任务。
+身份回答「我是谁、我在哪个租户」；提权/读放行回答「这段代码此刻是否被允许跨租户」。
+二者都不会改变你的租户身份，也不会传播给异步任务。
 
 ---
 
@@ -48,8 +50,8 @@
 ```java
 // ThreadContextTenantIdentifierResolver —— session 打开的瞬间调用一次
 public String resolveCurrentTenantIdentifier() {
-    if (TenantPrivilege.isActive()) {
-        return ROOT_TENANT_ID;          // 提权 → root 视角，不启用过滤
+    if (TenantPrivilege.isAnyReadBypassActive()) {
+        return ROOT_TENANT_ID;          // 提权或读放行 → root 视角，不启用过滤
     }
     return tenantContextAccessor.getTenantIDOrMissing();  // 缺失 → __MISSING_TENANT__（fail-closed）
 }
@@ -57,18 +59,24 @@ public String resolveCurrentTenantIdentifier() {
 
 返回值**绑定该 session 终身**。由此推出两条铁律：
 
-1. **同一事务内不可切换视角**。事务开始 → session 打开 → 租户模式定型，之后本事务内所有
-   查询都用这个视角。
-2. **需要另一个视角 = 新 session**。跨视角的操作必须拆到不同事务。
+1. **写入模式终身定型**：session 打开时定型的租户是 Hibernate `@TenantId` assigned-id 校验
+   （写入侧判定）的基准，之后本事务内不可更改。
+2. **读取视角每次访问前自查**：读过滤不受 session 定型束缚——每次 repository 访问前由
+   数据访问点按当前状态（普通 / 提权 / 读放行）重新启停 filter（见 §2.2），逐访问生效。
 
-### 2.2 读路径：提权能穿透已定型 session（双保险）
+需要另一个**写入**视角 = 新 session：跨租户写必须让提权作用域罩住事务边界（§2.3）。
 
-读路径有两重保险，`elevated` 不必强制罩住事务边界：
+### 2.2 读路径：数据访问点自查（双保险合流）
 
-- **第一重（session 打开时）**：resolver 读到提权状态即返回 root 租户，新 session 不启用
-  `_tenantId` filter，作用域内查询天然全量可见；
-- **第二重（session 已定型）**：`TenantScopeListener` 在提权进入时禁用已绑定 session 的
-  filter、退出时恢复原租户参数——即使先以普通租户开了事务，作用域内的查询也能透传。
+读路径有两重保险，`elevated` 与 `@CrossTenant` 都不必强制罩住事务边界：
+
+- **第一重（session 打开时）**：resolver 自查到任一读放行状态（提权或读放行）即返回
+  root 租户，新 session 不启用 `_tenantId` filter——作用域内新建的短命查询天然全量可见；
+- **第二重（每次数据访问时）**：`TenantRepositoryAspect` 在每个 Spring Data Repository
+  调用前先执行 `TenantReadIsolationAdapter.applyReadIsolation()`（自查模式）——线程已绑定
+  EntityManager 时按当前状态开关 filter：任一读放行激活 → `disableFilter`；否则 →
+  `enableFilter` + `setParameter(当前租户)`。即使先以普通租户开了事务、session 已定型，
+  作用域内的查询也会在**下一次访问时**透传；作用域退出后下一次访问自动恢复过滤。
 
 ```java
 // ✅ 读：已定型 session 内提权查询也放行（第二重保险生效）
@@ -84,10 +92,14 @@ public List<Order> listAllOrders() throws Exception {
 }
 ```
 
+读视角的切换**逐访问生效、退出即恢复**：同一事务内可以先普通查询 → 提权全量查询 → 普通
+查询，三次访问各自按当时状态过滤（证例：`sameTransactionElevatedScopeShouldExposeAllTenantsAndRestoreAfterExit`）。
+自查只作用于**读** filter，写路径不受影响（§2.3）。
+
 ### 2.3 写路径：提权仍然必须罩住事务边界
 
-写不受第二重保险保护：Hibernate `@TenantId` 的 assigned-id 校验基于 **session 定型时**的
-租户，与提权状态无关。已定型 session 内提权写入显式异租户实体仍会在 flush 时抛
+写路径不享受数据访问点自查的放行：Hibernate `@TenantId` 的 assigned-id 校验基于
+**session 定型时**的租户，与提权状态无关。已定型 session 内提权写入显式异租户实体仍会在 flush 时抛
 `PropertyValueException`（fail-fast，设计如此）。
 
 ```java
@@ -104,8 +116,8 @@ public void createCrossShopOrder() throws Exception {
 }
 ```
 
-无事务的短命查询（每次 repository 调用各开一个 session）不受此限：只要调用发生在作用域内，
-新 session 打开时即可读到提权状态。证例见
+无事务的短命查询（每次 repository 调用各开一个 session）同样覆盖：只要调用发生在作用域内，
+新 session 打开时 resolver 即可自查到读放行状态（第一重保险）。证例见
 `server/src/test/java/com/nona/inf/persistence/tenant/TenantRepositoryAspectTest.java`
 的 `elevatedScopeShouldExposeAllTenantsInsideAndRestoreIsolationAfterExit` 与
 `sameTransactionElevatedScopeShouldExposeAllTenantsAndRestoreAfterExit`。
@@ -222,6 +234,48 @@ C 端跨店下单是典型形态：买家上下文**没有租户**，一次订�
   （`TenantPrivilegeTest#nestedScopesRestoreLayerByLayer`）；
 - 作用域内**无法**篡改绑定值（ScopedValue 语义），不存在「忘了退出」的状态污染。
 
+### 4.5 @CrossTenant：注解读放行（只关读）
+
+读放行标记 `@CrossTenant`（标在方法或类上）声明「方法内（含调用链）的**读操作**关闭租户
+过滤，按全租户可见执行」——**只影响读**：
+
+- **写门禁不受注解影响**：注解作用域内写显式异租户实体**照常拒绝**
+  （`BusinessException: cross-tenant write is forbidden`）；写仍必须显式 `elevated`（§4.1）。
+- **不写 ThreadContext**：`CrossTenantAspect`（`HIGHEST_PRECEDENCE`，先于事务拦截器）以
+  `TenantPrivilege.withReadBypass(...)` 建立独立 ScopedValue 读放行状态，退出即恢复、嵌套安全。
+- **覆盖两种 session 时序**（§2.2 双保险）：新 session 由 resolver 自查定型 root；已定型
+  session 由数据访问点自查关闭 filter——同事务内注解读放行同样生效。
+
+```java
+// ✅ 跨租户读报表：方法内全租户可见，退出后恢复隔离
+@CrossTenant
+public List<Order> listAllOrders() {
+    return orderRepository.findAll();        // 全租户可见
+}
+
+// ✅ 注解 × 提权组合：读放行 + 显式异租户写（写放行来自 elevated，不是注解）
+@CrossTenant
+public void exportAndWriteBack() throws Exception {
+    TenantPrivilege.elevated(() -> {
+        orderRepository.save(crossTenantOrder);   // 显式 tenantID 保留（§3.2）
+    });
+}
+
+// ❌ 错误：注解不喂写门禁，异租户写仍被拒
+@CrossTenant
+public void saveForeign() {
+    shopRepository.save(crossShopOrder);   // BusinessException: cross-tenant write is forbidden
+}
+```
+
+适用场景与 §4.2 同理——跨租户读是特权操作，code review 强审，常规业务 CRUD 不允许。
+审计日志关键字 `read-bypass scope enter`（格式同 §4.3）。证例：
+`crossTenantAnnotatedReadShouldExposeAllTenantsAndRestoreIsolation`（新 session）、
+`crossTenantAnnotatedReadShouldBypassInStabilizedSession`（已定型 session）、
+`crossTenantNestedAnnotatedScopesAreSafe`（嵌套）、
+`crossTenantAnnotatedWriteShouldStillRequireElevation`（AC：写门禁不受注解影响）、
+`elevationInsideAnnotatedMethodShouldAllowForeignWrite`（组合）。
+
 ---
 
 ## 5. 异步场景
@@ -238,11 +292,12 @@ executor.setTaskDecorator(new RequestContextPropagatingTaskDecorator(tenantConte
 注意：装饰器需**逐 executor 手动绑定**，无自动配置。没绑定的线程池 = worker 无身份上下文 =
 读全空、写全拒（fail-fast）。
 
-### 5.2 提权状态不随线程传播
+### 5.2 提权/读放行状态不随线程传播
 
-ScopedValue 默认不跨线程。父线程正在提权时提交的异步任务，worker 内
-`TenantPrivilege.isActive()` 是 `false`
-（`TenantPrivilegeTest#elevationDoesNotLeakIntoNewThread`）。
+ScopedValue 默认不跨线程。父线程正在提权或 `@CrossTenant` 读放行时提交的异步任务，
+worker 内 `TenantPrivilege.isActive()` 与 `isReadBypassActive()` 均为 `false`
+（`TenantPrivilegeTest#elevationDoesNotLeakIntoNewThread`、
+`readBypassScopeDoesNotActivateWriteElevation`）。
 worker 内需要跨租户能力时必须在任务体内**显式声明**：
 
 ```java
@@ -318,14 +373,14 @@ noteRepository.count();        // 0
 ```yaml
 spring:
   jpa:
-    # OSV 必须关闭：session 打开时一次性定型租户模式，打开时机必须可控
+    # OSV 必须关闭：session 打开时一次性定型写入模式，打开时机必须可控
     open-in-view: false
 ```
 
 原因：OSV 生效时 session 在「请求内第一次触碰数据库」的时刻才打开——这个时机可能早于你的
-任何上下文准备逻辑（controller 预载、鉴权后置检查），租户模式就此随机定型。行为正确与否取决于
-「路径上谁先碰到数据库」，这种时序耦合靠读代码守不住。此外 OSV 把 JDBC 连接占用从事务级膨胀到
-请求级，高并发下连接池先行耗尽。
+任何上下文准备逻辑（controller 预载、鉴权后置检查），session 运载的**写入模式**（assign 租户
+校验基准）就此随机定型。行为正确与否取决于「路径上谁先碰到数据库」，这种时序耦合靠读代码守
+不住。此外 OSV 把 JDBC 连接占用从事务级膨胀到请求级，高并发下连接池先行耗尽。
 
 关闭后时序确定：准备上下文（含提权作用域）→ 事务开启 → session 打开 → resolver 定型。
 
@@ -344,19 +399,27 @@ spring:
 
 ## 9. ORM 无关性
 
-多租户机制的稳定契约只有两个，均不依赖 Hibernate：
+多租户机制的稳定契约在核心层，均不依赖任何 ORM 框架：
 
 - `TenantContextAccessor`：身份上下文唯一读取源（两级优先级：request scope → 线程快照）；
-- `TenantPrivilege`：提权状态唯一判断源。
+- `TenantPrivilege`：提权/读放行状态唯一判断源（`isActive` / `isReadBypassActive` /
+  `isAnyReadBypassActive`），纯 ScopedValue 状态，零持久化概念；
+- `@CrossTenant`：读放行契约声明（只关读，写门禁不受影响）。
 
-Hibernate 相关组件（resolver / `@TenantId` filter / AOP 门禁）只是契约的一层适配。
-未来更换 MyBatis 等框架时：
+存储差异收敛进适配层接口 `TenantReadIsolationAdapter`（四能力点：读过滤默认生效 / 读放行显式
+绕过 / 写门禁注入校验 / 提权作用域生命周期——前两个由适配层落实，后两个由核心层承载、适配层
+只自查感知状态）。JPA 实现（`JpaTenantReadIsolationAdapter`）在每次数据访问前自查状态启停
+filter；未来更换 MyBatis 等框架时：
 
-1. 用 interceptor（MyBatis `Interceptor`）改写 SQL：所有 tenant-scoped 表自动追加
-   `WHERE tenant_id = #{当前租户}`，租户取自 `TenantContextAccessor`；
+1. 用 interceptor（MyBatis `Interceptor`）在每条 SQL 前自查同一状态：任一读放行激活 →
+   不追加 tenant 条件；否则 → 所有 tenant-scoped 表自动追加 `WHERE tenant_id = #{当前租户}`，
+   租户取自 `TenantContextAccessor`；
 2. insert 自动填充 `tenant_id` 列；缺失时的行为保持 fail-closed（追加恒假条件，返回空集）；
 3. 写入门禁沿用 §3 的三条规则与提权矩阵，判断源用 `TenantPrivilege.isActive()`；
-4. 业务代码零改动——只要业务侧只依赖上述两个契约类。
+4. 核心层与业务代码零改动——只要业务侧只依赖上述三个契约。
+
+与框架耦合的技术点（resolver 单次调用、filter 启停时序、`@TenantId` 校验、R4 项目自有常量）
+全部收敛在 JPA 适配层内部，换框架时替换适配层实现即可。
 
 ---
 
@@ -379,3 +442,6 @@ Hibernate 相关组件（resolver / `@TenantId` filter / AOP 门禁）只是契�
   配对模板改造，清理放进 `finally` |
 | 升级/换依赖后 `findById` 能读到其他租户 | Hibernate 降级到 ≤ 6.4，HHH-16830 修复丢失 |
   锁定 ≥ 7.4.x 并回归 `tenantScopedFindByIdShouldBeFiltered`（§8） |
+| `@CrossTenant` 标注了却不生效（读仍是单租户过滤） | Spring AOP 代理语义：同 bean 内自调用
+  不经过切面；目标类不是 Spring bean（`new` 出来）/ `final` 类 / `private` 方法 | 跨租户读下沉到
+  独立 bean 的 public 方法并注入调用；确认类可被代理（§4.5） |
