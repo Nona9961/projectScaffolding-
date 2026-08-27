@@ -1,6 +1,7 @@
 package com.nona.inf.context;
 
 import com.nona.annotation.ScaffoldGenerated;
+import com.nona.tenant.TenantScopeExitHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -36,6 +37,12 @@ public final class TenantPrivilege {
     private static volatile TenantContextAccessor tenantContextAccessor;
 
     /**
+     * 作用域退出处理器（I2：作用域退出 → 数据层会话缓存清理，017 major-2 处置）；
+     * JPA 适配层 {@code @PostConstruct} 自注册；{@code null} 表示未注册（纯单测环境 no-op）。
+     */
+    private static volatile TenantScopeExitHandler scopeExitHandler;
+
+    /**
      * 私有构造：纯静态工具类，禁止实例化。
      */
     private TenantPrivilege() {
@@ -49,7 +56,12 @@ public final class TenantPrivilege {
     public static void elevated(Runnable action) {
         log.info("[TenantPrivilege] elevated scope enter, action={}, alreadyActive={}, identity={}, tenantID={}, at={}",
                 action.getClass().getSimpleName(), isActive(), resolveIdentity(), resolveTenantID(), Instant.now());
-        ScopedValue.where(ELEVATED, Boolean.TRUE).run(action);
+        try {
+            ScopedValue.where(ELEVATED, Boolean.TRUE).run(action);
+        }
+        finally {
+            notifyScopeExited();
+        }
     }
 
     /**
@@ -63,7 +75,12 @@ public final class TenantPrivilege {
     public static <T> T elevated(Callable<T> action) throws Exception {
         log.info("[TenantPrivilege] elevated scope enter, action={}, alreadyActive={}, identity={}, tenantID={}, at={}",
                 action.getClass().getSimpleName(), isActive(), resolveIdentity(), resolveTenantID(), Instant.now());
-        return ScopedValue.where(ELEVATED, Boolean.TRUE).call(action::call);
+        try {
+            return ScopedValue.where(ELEVATED, Boolean.TRUE).call(action::call);
+        }
+        finally {
+            notifyScopeExited();
+        }
     }
 
     /**
@@ -74,7 +91,12 @@ public final class TenantPrivilege {
     public static void withReadBypass(Runnable action) {
         log.info("[TenantPrivilege] read-bypass scope enter, action={}, alreadyActive={}, identity={}, tenantID={}, at={}",
                 action.getClass().getSimpleName(), isReadBypassActive(), resolveIdentity(), resolveTenantID(), Instant.now());
-        ScopedValue.where(READ_BYPASS, Boolean.TRUE).run(action);
+        try {
+            ScopedValue.where(READ_BYPASS, Boolean.TRUE).run(action);
+        }
+        finally {
+            notifyScopeExited();
+        }
     }
 
     /**
@@ -88,7 +110,12 @@ public final class TenantPrivilege {
     public static <T> T withReadBypass(Callable<T> action) throws Exception {
         log.info("[TenantPrivilege] read-bypass scope enter, action={}, alreadyActive={}, identity={}, tenantID={}, at={}",
                 action.getClass().getSimpleName(), isReadBypassActive(), resolveIdentity(), resolveTenantID(), Instant.now());
-        return ScopedValue.where(READ_BYPASS, Boolean.TRUE).call(action::call);
+        try {
+            return ScopedValue.where(READ_BYPASS, Boolean.TRUE).call(action::call);
+        }
+        finally {
+            notifyScopeExited();
+        }
     }
 
     /**
@@ -102,6 +129,10 @@ public final class TenantPrivilege {
      * @param <T>                 返回类型
      * @return 事务执行结果
      * @throws Exception 操作抛出的异常原样透传
+     * @apiNote 审查 minor-2：本方法的作用域退出晚于事务提交（EM 已解绑）→ 退出通知
+     *          {@code notifyScopeExited()} 中 handler 查 hasResource 恒 false → 空转属预期
+     *          （缓存随事务消亡，无泄露可清）。真正触发 flush+clear 的是事务内嵌套的
+     *          放行/提权作用域（如 {@code withReadBypass} / {@code elevated} 内联于事务回调）。
      */
     public static <T> T elevatedInTransaction(TransactionTemplate transactionTemplate,
                                               Callable<T> action) throws Exception {
@@ -153,6 +184,37 @@ public final class TenantPrivilege {
     public static void registerTenantContextAccessor(TenantContextAccessor accessor) {
         if (accessor != null) {
             tenantContextAccessor = accessor;
+        }
+    }
+
+    /**
+     * 注册作用域退出处理器（I2：提权/读放行作用域退出 → 数据层会话缓存清理）；传 {@code null} 忽略（幂等）。
+     * <p>
+     * 后注册覆盖先注册（单实现先例：JPA 适配层自注册）；{@code null} 不覆盖——保持
+     * 纯单测环境（无 Spring 容器、无 handler 注册）下退出通知为 no-op 的既有契约。
+     *
+     * @param handler 退出处理器；{@code null} 忽略
+     */
+    public static void registerScopeExitHandler(TenantScopeExitHandler handler) {
+        if (handler != null) {
+            scopeExitHandler = handler;
+        }
+    }
+
+    /**
+     * 作用域退出通知（finally 语义，异常路径同样通知）：handler 未注册 → 直接返回；
+     * handler 清理失败 → 记录日志不重抛（不吞业务异常、不覆盖作用域内原始异常）。
+     */
+    private static void notifyScopeExited() {
+        final TenantScopeExitHandler handler = scopeExitHandler;
+        if (handler == null) {
+            return;
+        }
+        try {
+            handler.onScopeExited();
+        }
+        catch (RuntimeException e) {
+            log.error("[TenantPrivilege] scope-exit cleanup failed", e);
         }
     }
 
