@@ -670,6 +670,40 @@ class TenantRepositoryAspectTest {
                 .doesNotContain(202L);
     }
 
+    /**
+     * 审查落点 P1-1（AC6 真实钉住点）：同事务内「读放行作用域写当前租户 → 作用域退出 flush+clear →
+     * 事务提交落库」——验证 design D4 顺序承诺「flush 先行防 clear 丢挂起写」。
+     * <p>
+     * TransactionTemplate 开外层事务（EM 绑定）；事务内 {@code withReadBypass} 作用域写当前租户实体
+     * （挂起态）；作用域退出时 EM 仍绑定 → {@code JpaTenantScopeExitHandler} 真实执行
+     * {@code flush()+clear()}：挂起写先落库（不丢），再失效缓存；随后事务提交，数据必须仍在库。
+     * 若实现退化（无 flush 或 clear 先行），挂起写被 clear 丢弃 → 提交后查无此数据 → 本用例红。
+     * <p>
+     * 与现存「注解内写」用例（{@code crossTenantAnnotatedWriteShouldAllowCurrentTenant}）的区别：
+     * 后者无外层事务（作用域退出时 EM 已解绑，handler 空转），本用例是 AC6「flush 保写」的唯一真实钉住点。
+     */
+    @Test
+    void sameTransactionBypassWriteShouldSurviveScopeExitFlushClearAndCommit() {
+        threadContext.setTenantID("tenant-A");
+        final LocalDateTime now = LocalDateTime.now();
+
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            TenantPrivilege.withReadBypass(() -> {
+                final TestTenantNotePO po = new TestTenantNotePO();
+                po.setId(601L);
+                po.setContent("note-current");
+                po.setCreateTime(now);
+                po.setUpdateTime(now);
+                tenantNoteRepository.save(po);   // 非提权 + 当前租户 → 门禁注入 tenant-A，实体挂起
+            });
+            // 作用域退出：handler 此刻执行 flush+clear（EM 绑定，真实路径）
+        });
+
+        // 事务已提交：数据必须落库（flush 先行防 clear 丢挂起写）
+        assertThat(tenantNoteRepository.findById(601L)).isPresent();
+        assertThat(tenantNoteRepository.findById(601L).orElseThrow().getTenantID()).isEqualTo("tenant-A");
+    }
+
     // ==================== R2/I3 删除门禁（AC3/AC4/AC5；参数判定覆盖 delete 系列，design §4.5 / §5.2）====================
 
     /**
