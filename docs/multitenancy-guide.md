@@ -1,9 +1,10 @@
 # 多租户使用手册
 
 > 面向脚手架使用者的操作手册：怎么做、什么不能做、做错了是什么现象。
-> 技术事实以仓库当前实现为准（关键类：`TenantContextAccessor` / `TenantPrivilege` /
+> 技术事实以仓库当前实现为准。规则层在 common（纯函数、存储无关）：`TenantWriteGate` /
+> `TenantScopeExitHandler`；载体层在 server：`TenantContextAccessor` / `TenantPrivilege` /
 > `ThreadContextTenantIdentifierResolver` / `TenantRepositoryAspect` /
-> `TenantReadIsolationAdapter`）。
+> `JpaTenantScopeExitHandler` / `TenantReadIsolationAdapter`。
 
 ---
 
@@ -37,6 +38,27 @@
 
 身份回答「我是谁、我在哪个租户」；提权/读放行回答「这段代码此刻是否被允许跨租户」。
 二者都不会改变你的租户身份，也不会传播给异步任务。
+
+### 1.3 模型语言：视角、两档授权与不变量
+
+本文档以「视角」「授权」「不变量」描述多租户行为（模型提取自存储领域模型，与 PostgreSQL RLS
+对照验证）：
+
+- **视角（View）**：数据可见范围的推导——**当前租户视角**（默认，只见本租户数据）与
+  **全量视角**（跨租户可见）。视角是纯函数：由授权状态推导，不存储；
+- **两档授权**：**提权**（`elevated`，读写两用）与**读放行**（`withReadBypass` /
+  `@CrossTenant`，只读）。提权是写门禁的唯一判断源；读放行只关闭读过滤；
+- **访问点**：一切数据操作的入口（现状 = Spring Data repository 代理 + Hibernate filter）。
+
+**不变量（I1-I5）**——本手册所有规则都是它们的落地：
+
+| # | 不变量 | 含义 |
+|---|--------|------|
+| I1 | 归属不可变 | 数据的租户归属一旦落库不可经实体修改 |
+| I2 | 缓存与视角一致 | 视角切换后，数据层缓存不得滞留异视角实体（作用域退出 flush+clear，见 §4.5 ⑤） |
+| I3 | 写目标合法性 | 任何写操作的目标行必须属于当前视角允许的范围 |
+| I4 | 插入归属必得 | 新插入的数据必须带归属：非提权由视角补全（② 注入），提权下必须显式声明（④ 拒绝空归属） |
+| I5 | 视角缺失 fail-closed | 上下文租户缺失时不放行 tenant-scoped 数据（读空集、写拒绝） |
 
 ---
 
@@ -126,27 +148,71 @@ public void createCrossShopOrder() throws Exception {
 
 ## 3. 写入门禁
 
-`TenantRepositoryAspect` 拦截所有 Spring Data Repository 的 `save` / `saveAndFlush` / `saveAll` /
-`saveAllAndFlush`，对 tenant-scoped 实体执行门禁。
+写门禁是**两条件判定**（提权状态 × 实体归属），与操作方法名无关（017 major-1 处置：方法名
+匹配已删除）。规则由 common 模块的纯函数 `TenantWriteGate#decideInjection` 承载——存储无关、
+零 Spring/JPA 依赖（grep 门）；`TenantRepositoryAspect` 只是载体：遍历方法参数中的租户实体 →
+调用判定 → 按返回值执行注入。
 
-### 3.1 非提权状态：三条规则
+### 3.1 判定模型与注入值语义
+
+判定输入只有三个值：`ownedTenantId`（实体归属）、`contextTenant`（当前视角租户）、
+`elevated`（是否提权，判断源 `TenantPrivilege.isActive()`）。返回值 = **需注入的租户值**，
+`null` = 放行（不写入实体）；拒绝 = 抛 `BusinessException`（fail-fast）：
+
+| 提权 | 实体归属 | 当前视角租户 | 判定结果 | 不变量 |
+|------|---------|-------------|----------|--------|
+| 否 | 空（null/空白） | 有 | **② 注入** `contextTenant` | I4 视角补全 |
+| 否 | = 当前租户 | 有 | 放行 | — |
+| 否 | ≠ 当前租户 | 有 | **① 拒绝**（`cross-tenant write is forbidden. currentTenant=..., entityTenant=...`） | I3 写目标合法性 |
+| 否 | 任意 | 缺失（null/空白） | **拒绝**（`tenantID is required for tenant-scoped write`） | I5 视角缺失 fail-closed |
+| 是 | 空（null/空白） | 任意 | **④ 拒绝**（`elevated write requires explicit tenantId but tenant is missing or blank`） | I4 插入归属必得 |
+| 是 | 显式合法租户 | 任意 | 放行并保留原值（不注入） | I1 归属不写入 |
+| 任意 | 哨兵值（`__MISSING_TENANT__` / `__ROOT_TENANT__`） | 任意 | **拒绝**（`invalid tenantId cannot be used as entity tenant`） | 防污染（与 minor-1 同源） |
+
+要点：
+
+- **④（修订）**：提权 + 实体空归属 → **拒绝，不再注入**。归属不可发明——「谁做的」是
+  identity 职责，非租户职责（017 架构审查决策）。空白归属在判定前归一为缺失
+  （`normalizeTenantID`），故提权 + 空白同样拒绝；
+- **哨兵**：`__MISSING_TENANT__`（视角缺失占位）与 `__ROOT_TENANT__`（全量视角）是框架内部
+  值，**不可作为实体归属**——判定前置拒绝，提权/非提权统一语义；
+- **② 注入只发生在「非提权 + 归属缺失」**：这是唯一的「框架替你写归属」分支。
+
+非提权代码示例（旧「三条规则」的模型语言形态）：
 
 ```java
-// 规则一：实体无租户 → 注入当前租户
+// ② 实体无租户 → 注入当前租户
 po.setTenantID(null); repo.save(po);          // ✅ 落库为当前租户
 
-// 规则二：显式租户一致 → 放行
+// 实体显式租户一致 → 放行
 po.setTenantID("t1"); /* 当前 t1 */ repo.save(po);   // ✅
 
-// 规则三：显式租户不一致 → 拒绝
+// ① 实体显式租户不一致 → 拒绝
 po.setTenantID("t2"); /* 当前 t1 */ repo.save(po);
 // ❌ BusinessException: cross-tenant write is forbidden. currentTenant=t1, entityTenant=t2
 ```
 
-前置约束：**当前上下文必须有租户**。`threadContext.setTenantID(null)` 或空白时保存直接抛
-`BusinessException: tenantID is required for tenant-scoped write operation`。
+前置约束：**当前视角必须有租户**（I5）。`threadContext.setTenantID(null)` 或空白时保存直接抛
+`BusinessException: tenantID is required for tenant-scoped write`。
 
-### 3.2 提权作用域内：放行显式合法租户，双缺失仍拒绝
+### 3.2 写操作形态分类：判定与参数有关，与操作方法名无关
+
+门禁只问一个问题：**方法参数里能取到租户实体吗？**（R2 收口）
+
+| 形态 | 操作 | 防线 |
+|------|------|------|
+| **PO 形态**（参数是 `TenantScopedBasePO`，或 Iterable 内的 PO 元素） | `save` / `saveAndFlush`、`saveAll` / `saveAllAndFlush`（集合）、`delete(entity)` / `deleteAll(集合)` / `deleteAllInBatch(集合)` | **门禁判定**（逐实体两条件判定） |
+| **ID/无参形态**（参数取不到租户信息） | `deleteById(id)` / `deleteAllById(ids)` / `deleteAll()` / `deleteAllInBatch()` | **JPA filter 兜底**（I3 在目标解析阶段达成，H3 契约见 §3.5） |
+
+要点：
+
+- 旧实现按方法名匹配（仅 save 系列），删除路径不经门禁——已由参数判定取代（017 major-1）；
+- **P1-1**：带实体的删除受门禁判定——注解读放行内删异租户实体照常被拒（§4.5 ⑥）；
+- **P1-2**：带租户实体参数的方法（**含读方法**）都会被判定——读方法参数勿带租户实体（§4.5 ⑥）；
+- ID/无参形态的 I3 由 Hibernate discriminator filter 达成：删除前先 SELECT 过滤，异租户行
+  load 不到 → 删不掉。**这是 Hibernate 行为契约（实验 D 转正），升级须回归**（§3.5 H3）。
+
+### 3.3 提权作用域内：④ 空归属拒绝，显式归属放行
 
 ```java
 // ✅ 实体显式合法租户 → 放行并保留原值（上下文有没有租户都行）
@@ -157,25 +223,43 @@ TenantPrivilege.elevated(() -> {
     noteRepository.save(po);         // 落库为 shop-B
 });
 
-// ❌ 双缺失（实体无租户 + 上下文无租户）→ 依然拒绝，fail-closed 不回退
+// ❌ ④ 提权 + 空归属（null/空白）→ 拒绝，不再注入（fail-closed）
 TenantPrivilege.elevated(() -> {
     TestTenantNotePO po = new TestTenantNotePO();   // tenantID 为 null
     noteRepository.save(po);
-    // BusinessException: tenantID is required to inject into tenant-scoped write
+    // BusinessException: elevated write requires explicit tenantId but tenant is missing or blank
 });
 
-// ❌ 实体携带 __MISSING_TENANT__ 占位 → 拒绝（占位值不是合法租户）
+// ❌ 实体携带哨兵值（__MISSING_TENANT__ / __ROOT_TENANT__）→ 拒绝（哨兵不是合法租户）
 ```
 
-提权不是免检通道：**每一行数据的归属都必须显式写在实体上，或能从上下文注入**。
-完整判定矩阵见 `TenantRepositoryAspectTest`（`crossTenantWrite*` 系列用例）。
+提权不是免检通道：**每一行数据的归属都必须显式写在实体上**。判定矩阵全表见
+`common/src/test/java/com/nona/tenant/TenantWriteGateTest.java`（14 条纯函数单测）与
+`TenantRepositoryAspectTest`（`crossTenantWrite*` 系列 + `elevatedWriteWithNullTenantShouldFail` /
+`elevatedWriteWithBlankTenantShouldFail` 集成证例）。
 
-### 3.3 flush 落库值
+### 3.4 flush 落库值
 
-insert 时 Hibernate 层（`TenantIdGeneration`）的行为与门禁对齐：session 租户为 root
+insert 时 Hibernate 写侧校验（`@TenantId` assigned-id）与门禁对齐：session 租户为 root
 （提权下新建 session）时保留实体的显式 `tenantID`；普通租户 session 下显式值 ≠ session 租户
 会抛 `PropertyValueException`。因此**不要绕过 repository 直接 `EntityManager.persist`
-写 tenant-scoped 实体**——那会跳过 AOP 门禁的友好报错，直接撞上 ORM 层的异常。
+写 tenant-scoped 实体**——那会跳过 AOP 门禁的友好报错，直接撞上 ORM 层的异常（§4.5 ④ 红线）。
+
+### 3.5 JPA 实现偏差（Hibernate 行为契约）
+
+机制层行为与模型语言的偏差收敛在 JPA 适配层，以下为**契约**（不收缩框架承诺；H3 为升级回归
+清单必查项）：
+
+| # | 偏差 | 说明 | 处置 |
+|---|------|------|------|
+| H1 | session 定型 | session 打开时定型的租户是 Hibernate 写侧校验基准，事务内不可更改；已定型 session 内提权写异租户 flush 抛 `PropertyValueException` | `elevatedInTransaction` 为等效形态（先提权再开事务，§2.3）——Hibernate 固有行为，非缺陷 |
+| H2 | filter 粗粒度 | 注解/提权放行是整条关闭 `_tenantId` filter——**读 + 删共用一条防线**，无细粒度控制 | 写侧已由参数判定补齐（R2）；删除随 filter 为语义本然（H3） |
+| H3 | filter 对 bulk DML 生效 | 无参形态 `deleteAllInBatch()` / `deleteAll()` 受 filter 保护，异租户行删不掉（实验 D 转正：`TenantDmlBoundaryContractTest#contractD2_noArgDeleteAllInBatchShouldBeFilteredToCurrentTenant`） | 依赖 Hibernate 版本行为，升级回归必查 |
+
+**`elevatedInTransaction` 的作用域退出 handler 空转属预期**：其退出晚于事务提交
+（EntityManager 已解绑），`JpaTenantScopeExitHandler` 查 `hasResource` 恒 false 直接返回——
+缓存随事务消亡，本无泄露可清。真正触发 `flush()+clear()` 的是事务内嵌套的
+`elevated` / `withReadBypass` 作用域（§4.5 ⑤）。
 
 ---
 
@@ -257,7 +341,7 @@ public List<Order> listAllOrders() {
 @CrossTenant
 public void exportAndWriteBack() throws Exception {
     TenantPrivilege.elevated(() -> {
-        orderRepository.save(crossTenantOrder);   // 显式 tenantID 保留（§3.2）
+        orderRepository.save(crossTenantOrder);   // 显式 tenantID 保留（§3.3）
     });
 }
 
@@ -304,13 +388,39 @@ Repository 代理的路径。以下直用**不受**数据访问点自查保护�
 
 **③ 注解内新 session 定型 ROOT 是已知权衡**：`@CrossTenant` 作用域内**新建**的 session 经
 resolver 自查定型为 ROOT（`isAnyReadBypassActive` → `ROOT_TENANT_ID`）。ROOT 模式下
-Hibernate 写侧校验（`TenantIdGeneration`）保留实体显式 `tenantID`——若绕过写门禁直写
-（如 `EntityManager.persist`），显式异租户值会被保留落库。该风险由写门禁兜底：非提权写强制
-与当前上下文租户一致（缺失注入、一致放行、不一致拒绝）——
+Hibernate 写侧校验（`@TenantId` assigned-id）保留实体显式 `tenantID`——若绕过写门禁直写
+（如 `EntityManager.persist`），显式异租户值会被保留落库；**null-tenant 实体则被落库为
+`tenant_id = '__ROOT_TENANT__'`（minor-1 污染：脏数据永久不可见）**。该风险由写门禁兜底：
+非提权写强制与当前上下文租户一致（缺失注入、一致放行、不一致拒绝）——
 `crossTenantAnnotatedWriteShouldAllowCurrentTenant`（注解内写当前租户照常落库为本租户）与
 `crossTenantAnnotatedWriteShouldStillRequireElevation`（注解内写异租户照常拒绝）共同钉住；
 异租户写唯一通道仍是显式 `elevated`。此 ROOT 定型是「注解只关读」语义下的既定权衡：注解
 不改写侧归属、绝不构成写放行。
+
+**④ 红线：注解内读到的实体仅供读取（F 实证）**：`@CrossTenant` 作用域内 load 出的异租户实体
+（`findById` / `findAll` 结果）**不是写入口**——绕过写门禁修改其业务字段并 flush（或依赖
+作用域退出 auto-flush）会把跨租户篡改落库（实证：`TenantDmlBoundaryContractTest#contractF_annotatedReadThenMutateBusinessFieldThenFlush`）。
+框架只承诺 repository 层写入口的门禁与隔离；`EntityManager` 直用 / `JdbcTemplate` / 手动
+`flush()` 直改均不在承诺范围（016 红线延续）。绕过写入口时归属由存储层兜底（写侧校验或显式
+租户值保留），**污染自负**。正确姿势：注解内读到的实体仅用于只读计算；要写，把实体归属显式
+声明后走 repository 写入口（非提权写本租户 / 提权写异租户）。
+
+**⑤ 红线：作用域退出 auto-flush 也会落库挂起写**：`elevated` / `withReadBypass` 退出时
+`JpaTenantScopeExitHandler` 执行 `flush()+clear()`（顺序即正确性：先落库保挂起写、再失效缓存，
+I2）——**不显式 `flush()` 的挂起写（含注解内被修改的实体）同样会落库**。勿依赖「不显式
+flush 就不落库」；「注解内读到的实体仅供读取」（红线④）是唯一安全语义。
+
+**⑥ P1-1 / P1-2：门禁判定与参数形态绑定**：
+
+- **P1-1（带实体删除受门禁）**：注解/提权作用域内调用带**实体参数**的删除
+  （`delete(entity)` / `deleteAll(集合)` / `deleteAllInBatch(集合)`）照常过写门禁——非提权删
+  异租户实体被拒（`annotatedDeleteWithForeignTenantPoShouldBeRejected`）。注解的读放行
+  **不**放行带实体删除；无实体参数的删除（`deleteById` / `deleteAllById` / `deleteAll()` /
+  `deleteAllInBatch()`）随 filter 防线（H3 契约，见 §3.5）；
+- **P1-2（读方法参数勿带租户实体）**：门禁对**所有**带 `TenantScopedBasePO` 参数的方法生效，
+  读方法也不例外——以租户实体为直接参数（或 Iterable 内元素）的读方法会按两条件判定，
+  参数实体与当前视角不一致即被拒。只读查询请用 ID / 标量 / 非租户探针参数（由 filter 兜底，
+  无判定开销）。
 
 ---
 
@@ -435,27 +545,32 @@ spring:
 
 ## 9. ORM 无关性
 
-多租户机制的稳定契约在核心层，均不依赖任何 ORM 框架：
+多租户机制的稳定契约在核心层（common），均不依赖任何 ORM 框架（grep 门）：
 
+- `TenantWriteGate`：写门禁纯函数判定（两条件：提权状态 × 实体归属）+ 哨兵常量
+  （MISSING/ROOT）权威定义，零 Spring/JPA 依赖；
+- `TenantScopeExitHandler`：作用域退出通知 SPI（I2：缓存与视角一致），实现层自注册；
 - `TenantContextAccessor`：身份上下文唯一读取源（两级优先级：request scope → 线程快照）；
 - `TenantPrivilege`：提权/读放行状态唯一判断源（`isActive` / `isReadBypassActive` /
   `isAnyReadBypassActive`），纯 ScopedValue 状态，零持久化概念；
 - `@CrossTenant`：读放行契约声明（只关读，写门禁不受影响）。
 
-存储差异收敛进适配层接口 `TenantReadIsolationAdapter`（四能力点：读过滤默认生效 / 读放行显式
-绕过 / 写门禁注入校验 / 提权作用域生命周期——前两个由适配层落实，后两个由核心层承载、适配层
-只自查感知状态）。JPA 实现（`JpaTenantReadIsolationAdapter`）在每次数据访问前自查状态启停
-filter；未来更换 MyBatis 等框架时：
+存储差异收敛进适配层：读隔离（`TenantReadIsolationAdapter`：读过滤默认生效 / 读放行显式绕过，
+每次数据访问前自查状态启停 filter；JPA 实现 `JpaTenantReadIsolationAdapter`）与 I2 缓存一致性
+（`JpaTenantScopeExitHandler`：作用域退出 flush+clear）。写门禁判定 100% 在 common——Aspect
+只剩参数遍历与注入执行。未来更换 MyBatis 等框架时：
 
 1. 用 interceptor（MyBatis `Interceptor`）在每条 SQL 前自查同一状态：任一读放行激活 →
    不追加 tenant 条件；否则 → 所有 tenant-scoped 表自动追加 `WHERE tenant_id = #{当前租户}`，
    租户取自 `TenantContextAccessor`；
 2. insert 自动填充 `tenant_id` 列；缺失时的行为保持 fail-closed（追加恒假条件，返回空集）；
-3. 写入门禁沿用 §3 的三条规则与提权矩阵，判断源用 `TenantPrivilege.isActive()`；
-4. 核心层与业务代码零改动——只要业务侧只依赖上述三个契约。
+3. 写入门禁沿用 §3 的两条件判定——interceptor 遍历参数中的租户实体，调 common
+   `TenantWriteGate.decideInjection`，按返回值执行注入，判断源用 `TenantPrivilege.isActive()`；
+4. 作用域退出通知复用 `TenantScopeExitHandler`（MyBatis 侧实现清 SqlSession 缓存）；
+5. 核心层与业务代码零改动——只要业务侧只依赖上述契约。
 
-与框架耦合的技术点（resolver 单次调用、filter 启停时序、`@TenantId` 校验、R4 项目自有常量）
-全部收敛在 JPA 适配层内部，换框架时替换适配层实现即可。
+与框架耦合的技术点（resolver 单次调用、filter 启停时序、`@TenantId` 校验、H1-H3 偏差）全部
+收敛在 JPA 适配层内部，换框架时替换适配层实现即可。
 
 ---
 
@@ -467,10 +582,15 @@ filter；未来更换 MyBatis 等框架时：
   fail-closed 生效 | 按 §6 排查顺序检查 `getTenantID()`；绑 decorator、配对快照 |
 | `PropertyValueException: assigned tenant id differs...` | session 已按具体租户定型，
   却以显式异租户实体走了 ORM 写入（绕过门禁或提权作用域未罩住事务边界） | 别绕过 repository；
-  写必须用 `elevatedInTransaction` 或把 `elevated` 移到事务外层（§2.3 / §3.3） |
+  写必须用 `elevatedInTransaction` 或把 `elevated` 移到事务外层（§2.3 / §3.4） |
 | 提权了但写入仍被拒 `cross-tenant write is forbidden` | 该路径不在提权作用域内
-  （作用域提前退出了），或实体租户为 `__MISSING_TENANT__` 占位 | 检查作用域覆盖范围；
-  实体显式设置合法租户，勿填占位值（§3.2） |
+  （作用域提前退出了），或实体租户为哨兵值（`__MISSING_TENANT__` / `__ROOT_TENANT__`） | 检查
+  作用域覆盖范围；实体显式设置合法租户，勿填哨兵值（§3.3） |
+| 提权下写入被拒 `elevated write requires explicit tenantId but tenant is missing or blank` | ④：
+  提权 + 实体空归属（null/空白）→ 拒绝，不再注入 | 实体显式声明归属（§3.3）；框架不会替你
+  发明归属——「谁做的」是 identity 职责 |
+| 写入被拒 `invalid tenantId cannot be used as entity tenant` | 实体归属填了哨兵值
+  （MISSING/ROOT） | 哨兵是框架内部值，不可作实体归属（§3.3） |
 | 异步任务里查不到数据 / 写入抛 `tenantID is required...` | worker 无身份快照
   （decorator 未绑定）或提权未随线程传播而任务依赖它 | §5：绑定 decorator；任务体内显式
   `elevated` + 显式目标租户 |

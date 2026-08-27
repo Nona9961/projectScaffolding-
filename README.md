@@ -25,7 +25,11 @@
 
 ## 多租户
 
-tenant-scoped 数据基于 Hibernate `@TenantId` 自动读写隔离，写入门禁自动注入/校验租户；跨租户**写**必须 `TenantPrivilege` 提权；跨租户**读**可用 `@CrossTenant`（只关读过滤）或提权。
+tenant-scoped 数据基于 Hibernate `@TenantId` 自动读写隔离；写入门禁是 common 层的纯函数判定
+（`TenantWriteGate`：提权状态 × 实体归属两条件，覆盖所有带实体的写操作，与操作方法名无关；
+ID/无参删除由 filter 兜底）。提权/读放行作用域退出时自动 `flush()+clear()`（`TenantScopeExitHandler`
+SPI），保证数据层缓存与当前视角一致（不变量 I2）。跨租户**写**必须 `TenantPrivilege` 提权
+（提权下实体须显式归属）；跨租户**读**可用 `@CrossTenant`（只关读过滤）或提权。
 fail-closed：上下文租户缺失时不放行任何 tenant-scoped 数据——查询返回空集、写入直接拒绝。
 
 详细用法见[多租户使用手册](docs/multitenancy-guide.md)。
