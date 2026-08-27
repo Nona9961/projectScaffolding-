@@ -8,7 +8,7 @@ package com.nona.tenant;
  * （背景：Hibernate 一级缓存 key 不含 filter，filter 只参与 SQL 渲染——放行读入的异租户实体
  * 若不清理，过滤恢复后仍可从一级缓存命中，造成跨租户读泄露）。
  * <p>
- * 零依赖纯 SPI：不感知 Spring/JPA 与具体存储实现，由实现层（JPA / 未来 MyBatis 适配层）自行注册
+ * 零依赖的纯 SPI：不感知 Spring/JPA 与具体存储实现，由实现层（JPA / 未来 MyBatis 适配层）自行注册
  * （先例：静态 volatile + {@code @PostConstruct} 自注册模式）。
  *
  * @author nona9961
