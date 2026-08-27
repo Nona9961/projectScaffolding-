@@ -54,7 +54,7 @@ public final class TenantPrivilege {
      * @param action 提权操作
      */
     public static void elevated(Runnable action) {
-        log.info("[TenantPrivilege] elevated scope enter, action={}, alreadyActive={}, identity={}, tenantID={}, at={}",
+        log.debug("[TenantPrivilege] elevated scope enter, action={}, alreadyActive={}, identity={}, tenantID={}, at={}",
                 action.getClass().getSimpleName(), isActive(), resolveIdentity(), resolveTenantID(), Instant.now());
         try {
             ScopedValue.where(ELEVATED, Boolean.TRUE).run(action);
@@ -73,7 +73,7 @@ public final class TenantPrivilege {
      * @throws Exception 操作抛出的异常原样透传
      */
     public static <T> T elevated(Callable<T> action) throws Exception {
-        log.info("[TenantPrivilege] elevated scope enter, action={}, alreadyActive={}, identity={}, tenantID={}, at={}",
+        log.debug("[TenantPrivilege] elevated scope enter, action={}, alreadyActive={}, identity={}, tenantID={}, at={}",
                 action.getClass().getSimpleName(), isActive(), resolveIdentity(), resolveTenantID(), Instant.now());
         try {
             return ScopedValue.where(ELEVATED, Boolean.TRUE).call(action::call);
@@ -89,7 +89,7 @@ public final class TenantPrivilege {
      * @param action 读放行操作
      */
     public static void withReadBypass(Runnable action) {
-        log.info("[TenantPrivilege] read-bypass scope enter, action={}, alreadyActive={}, identity={}, tenantID={}, at={}",
+        log.debug("[TenantPrivilege] read-bypass scope enter, action={}, alreadyActive={}, identity={}, tenantID={}, at={}",
                 action.getClass().getSimpleName(), isReadBypassActive(), resolveIdentity(), resolveTenantID(), Instant.now());
         try {
             ScopedValue.where(READ_BYPASS, Boolean.TRUE).run(action);
@@ -108,7 +108,7 @@ public final class TenantPrivilege {
      * @throws Exception 操作抛出的异常原样透传
      */
     public static <T> T withReadBypass(Callable<T> action) throws Exception {
-        log.info("[TenantPrivilege] read-bypass scope enter, action={}, alreadyActive={}, identity={}, tenantID={}, at={}",
+        log.debug("[TenantPrivilege] read-bypass scope enter, action={}, alreadyActive={}, identity={}, tenantID={}, at={}",
                 action.getClass().getSimpleName(), isReadBypassActive(), resolveIdentity(), resolveTenantID(), Instant.now());
         try {
             return ScopedValue.where(READ_BYPASS, Boolean.TRUE).call(action::call);
