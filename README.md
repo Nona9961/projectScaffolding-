@@ -1,7 +1,7 @@
 # Project Scaffolding
 
 企业级 Java 后端脚手架：以 **DDD 分层骨架 + 属性级变更追踪 + 开箱即用的多租户隔离** 为核心，
-作为新项目的起点模板。基于 [changeTracking](../changeTracking/) 框架与 Spring Boot 4.1。
+作为新项目的起点模板。基于 [changeTracking](https://github.com/Nona9961/changeTracking) 框架与 Spring Boot 4.1。
 
 ## 动机
 
@@ -28,16 +28,38 @@
 tenant-scoped 数据基于 Hibernate `@TenantId` 自动读写隔离；写入门禁是 common 层的纯函数判定
 （`TenantWriteGate`：提权状态 × 实体归属两条件，覆盖所有带实体的写操作，与操作方法名无关；
 ID/无参删除由 filter 兜底）。提权/读放行作用域退出时自动 `flush()+clear()`（`TenantScopeExitHandler`
-SPI），保证数据层缓存与当前视角一致（不变量 I2）。跨租户**写**必须 `TenantPrivilege` 提权
-（提权下实体须显式归属）；跨租户**读**可用 `@CrossTenant`（只关读过滤）或提权。
-fail-closed：上下文租户缺失时不放行任何 tenant-scoped 数据——查询返回空集、写入直接拒绝。
+SPI），保证数据层缓存与当前视角一致。跨租户**写**必须 `TenantPrivilege` 提权（提权下实体须显式
+归属）；跨租户**读**可用 `@CrossTenant`（只关读过滤）或提权。fail-closed：上下文租户缺失时不放行
+任何 tenant-scoped 数据——查询返回空集、写入直接拒绝。
 
 详细用法见[多租户使用手册](docs/multitenancy-guide.md)。
+
+## 前置依赖：changeTracking SDK
+
+本仓库的变更追踪能力来自独立的 [changeTracking](https://github.com/Nona9961/changeTracking) 仓库
+（`change-tracking-api` / `change-tracking-core`），该 SDK **未发布到 Maven 中央仓库**，直接克隆本
+仓库无法构建——必须先克隆 changeTracking 并安装到本地 Maven 仓库：
+
+```bash
+# 1. 克隆并安装 changeTracking（api + core 同时装入本地 m2）
+git clone https://github.com/Nona9961/changeTracking.git
+cd changeTracking
+mvn install            # 首次可追加 -DskipTests 加速
+
+# 2. 克隆本仓库
+git clone https://github.com/Nona9961/projectScaffolding-.git
+cd projectScaffolding-
+
+# 3. 全量验证 / 启动
+mvn clean test
+mvn spring-boot:run -pl server
+```
+
+> 若 changeTracking 为私有仓库，clone/install 需要 GitHub 账号认证（SSH key 或 HTTPS token）。
 
 ## 快速开始
 
 ```bash
-# 编译并安装
 mvn clean install
 
 # 启动（默认 H2 内存数据库）
@@ -58,6 +80,26 @@ mvn spring-boot:run -pl server
 | Log4j2 | 2.26.1 | 异步日志 |
 
 > 关键约定（标识符配置、租户规则、变更追踪配置等）见内部规范文档，不再于此重复。
+
+## Git 协作与分支策略
+
+**main 分支受保护**（仓库规则集 enforce，未配置任何 bypass 人员——包含仓库管理员在内一律生效）：
+
+- 禁止直接推送——仅允许经 **Pull Request** 合并，且需 1 个评审批准
+- 禁止 force push / 非快进推送（历史重写不被支持）
+- 禁止删除分支
+
+协作流程：
+
+1. **拉分支**：一律从 `main` 拉出。任务级分支 `fix/<task-slug>`（如 `fix/tenant-write-gate`）；
+   任务按 Work Unit 拆分时，WU 分支（如 `fix/wu-a`）从任务分支拉出，**纯本地使用**、不推远端
+2. **开发**：在 WU 分支上实现并自验 → `--ff-only` 合回任务分支 → 删除 WU 分支
+3. **提交**：一 WU 一提交；消息格式 `fix(WU-<编号>): 摘要`（或按 `feat:`/`docs:` 语义前缀）；
+   每个提交必须能独立通过全量测试
+4. **收尾**：push 任务分支到远端 → 创建 PR（`gh pr create --base main --head <task分支>`）→
+   由仓库负责人评审并合并 → 合并后删除本地任务分支
+5. **边界**：历史重写（force push / reset 后强推）与规则集修改不在协作流程内，仅由仓库负责人决定；
+   AI 协作环境下，历史重写操作由负责人亲手执行
 
 ## 许可证
 
