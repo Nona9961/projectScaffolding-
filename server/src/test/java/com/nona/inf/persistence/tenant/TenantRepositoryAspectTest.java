@@ -418,9 +418,9 @@ class TenantRepositoryAspectTest {
     }
 
     /**
-     * 验证提权作用域 + entity tenantID 缺失 → 拒绝（④ 修订，017 处置 R1：归属不可发明，fail-closed）。
+     * 验证提权作用域 + entity tenantID 缺失 → 拒绝（修订语义：归属不可发明，fail-closed）。
      * <p>
-     * 旧语义为「注入当前 tenant」（admin 普通创建场景）；2026-08-27 架构审查判定 ④ 为契约级错误：
+     * 旧语义为「注入当前 tenant」（admin 普通创建场景）；后经架构审查判定为契约级错误：
      * 「谁做的」是 identity 职责，非租户职责——提权 + 空归属写必须显式报错，而非发明归属。
      * 对应 common 单测 {@code TenantWriteGateTest#elevatedWithNullTenantShouldReject}。
      */
@@ -635,12 +635,12 @@ class TenantRepositoryAspectTest {
     }
 
     /**
-     * 写入面契约（设计意图，014 issue §3）：已定型 session 内提权写入显式异租户必须 fail-fast。
+     * 写入面契约（设计意图）：已定型 session 内提权写入显式异租户必须 fail-fast。
      * <p>
      * Hibernate {@code @TenantId} 的 assigned-id 校验（TenantIdGeneration）基于 session 定型租户，
      * 与提权状态无关：session 打开时定型 tenant-A，随后提权写入 tenant-B → flush 时抛
      * PropertyValueException，事务回滚、库中无该数据。
-     * 因此提权必须罩住事务边界（正确用法是 elevatedInTransaction / 手册铁律①），
+     * 因此提权必须罩住事务边界（正确用法是 elevatedInTransaction，session 打开时提权即定型），
      * 使 session 打开时租户模式即按提权定型，显式异租户写入才会被 Hibernate 放行。
      */
     @Test
@@ -671,7 +671,7 @@ class TenantRepositoryAspectTest {
     }
 
     /**
-     * 审查落点 P1-1（AC6 真实钉住点）：同事务内「读放行作用域写当前租户 → 作用域退出 flush+clear →
+     * 同事务保写契约（验收钉住点）：同事务内「读放行作用域写当前租户 → 作用域退出 flush+clear →
      * 事务提交落库」——验证 design D4 顺序承诺「flush 先行防 clear 丢挂起写」。
      * <p>
      * TransactionTemplate 开外层事务（EM 绑定）；事务内 {@code withReadBypass} 作用域写当前租户实体
@@ -680,7 +680,7 @@ class TenantRepositoryAspectTest {
      * 若实现退化（无 flush 或 clear 先行），挂起写被 clear 丢弃 → 提交后查无此数据 → 本用例红。
      * <p>
      * 与现存「注解内写」用例（{@code crossTenantAnnotatedWriteShouldAllowCurrentTenant}）的区别：
-     * 后者无外层事务（作用域退出时 EM 已解绑，handler 空转），本用例是 AC6「flush 保写」的唯一真实钉住点。
+     * 后者无外层事务（作用域退出时 EM 已解绑，handler 空转），本用例是「flush 保写」语义的唯一真实钉住点。
      */
     @Test
     void sameTransactionBypassWriteShouldSurviveScopeExitFlushClearAndCommit() {
@@ -704,10 +704,10 @@ class TenantRepositoryAspectTest {
         assertThat(tenantNoteRepository.findById(601L).orElseThrow().getTenantID()).isEqualTo("tenant-A");
     }
 
-    // ==================== R2/I3 删除门禁（AC3/AC4/AC5；参数判定覆盖 delete 系列，design §4.5 / §5.2）====================
+    // ==================== 删除门禁（参数判定覆盖 delete 系列：PO 形态受两条件判定）====================
 
     /**
-     * 验证非提权 {@code delete(entity)} 删异租户实体 → 拒绝（AC3：
+     * 验证非提权 {@code delete(entity)} 删异租户实体 → 拒绝（
      * 写门禁判定不依赖方法名——带实体参数的删除同样受两条件判定）。
      */
     @Test
@@ -727,7 +727,7 @@ class TenantRepositoryAspectTest {
     }
 
     /**
-     * 验证非提权 {@code deleteAll(集合)} 删异租户实体 → 拒绝（AC3：Iterable 内 PO 元素逐实体判定）。
+     * 验证非提权 {@code deleteAll(集合)} 删异租户实体 → 拒绝（Iterable 内 PO 元素逐实体判定）。
      */
     @Test
     void nonElevatedDeleteAllWithForeignTenantShouldBeRejected() {
@@ -746,7 +746,7 @@ class TenantRepositoryAspectTest {
     }
 
     /**
-     * 验证非提权删本租户实体 → 正常（AC4：先提权造数据，恢复隔离后 delete 本租户实体）。
+     * 验证非提权删本租户实体 → 正常（先提权造数据，恢复隔离后 delete 本租户实体）。
      */
     @Test
     void nonElevatedDeleteOwnTenantShouldSucceed() {
@@ -767,7 +767,7 @@ class TenantRepositoryAspectTest {
     }
 
     /**
-     * 验证提权删异租户实体 → 放行（AC4：提权为写门禁唯一判断源，显式异租户归属放行，I1 不注入）。
+     * 验证提权删异租户实体 → 放行（提权为写门禁唯一判断源，显式异租户归属放行，归属不变不注入）。
      * <p>
      * 数据由 {@code ElevatedTenantTestService#saveNoteForTenant} 提权创建；删除在提权作用域内
      * 直接调 repository（服务类不在本次改动范围）。
@@ -792,7 +792,7 @@ class TenantRepositoryAspectTest {
     }
 
     /**
-     * 验证注解内带实体删除异租户 → 门禁拒绝（AC5：注解≠提权，014 决策——注解只撤销读过滤；
+     * 验证注解内带实体删除异租户 → 门禁拒绝（注解≠提权：注解只撤销读过滤，
      * 带实体参数的删除仍受两条件判定）。
      */
     @Test
@@ -813,7 +813,7 @@ class TenantRepositoryAspectTest {
     }
 
     /**
-     * 验证提权 + 空白归属 → 拒绝（④ 修订 + 归一化收口：空白归一为空归属，见
+     * 验证提权 + 空白归属 → 拒绝（空白归一为空归属后拒绝，见
      * {@code TenantWriteGateTest#elevatedWithBlankTenantShouldReject}）。
      * {@code saveNoteForTenant} 可传入任意字符串，故以 "   " 形态直探门禁。
      */

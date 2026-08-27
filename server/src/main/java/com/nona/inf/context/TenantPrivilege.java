@@ -37,7 +37,8 @@ public final class TenantPrivilege {
     private static volatile TenantContextAccessor tenantContextAccessor;
 
     /**
-     * 作用域退出处理器（I2：作用域退出 → 数据层会话缓存清理，017 major-2 处置）；
+     * 作用域退出处理器：作用域退出（含异常路径）→ 数据层会话缓存清理（缓存与视角一致：
+     * 放行阶段读入的异租户实体不得在过滤恢复后滞留）。
      * JPA 适配层 {@code @PostConstruct} 自注册；{@code null} 表示未注册（纯单测环境 no-op）。
      */
     private static volatile TenantScopeExitHandler scopeExitHandler;
@@ -129,7 +130,7 @@ public final class TenantPrivilege {
      * @param <T>                 返回类型
      * @return 事务执行结果
      * @throws Exception 操作抛出的异常原样透传
-     * @apiNote 审查 minor-2：本方法的作用域退出晚于事务提交（EM 已解绑）→ 退出通知
+     * @apiNote 本方法的作用域退出晚于事务提交（EM 已解绑）→ 退出通知
      *          {@code notifyScopeExited()} 中 handler 查 hasResource 恒 false → 空转属预期
      *          （缓存随事务消亡，无泄露可清）。真正触发 flush+clear 的是事务内嵌套的
      *          放行/提权作用域（如 {@code withReadBypass} / {@code elevated} 内联于事务回调）。

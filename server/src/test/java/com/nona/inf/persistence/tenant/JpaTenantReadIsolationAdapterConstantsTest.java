@@ -8,11 +8,11 @@ import java.lang.reflect.Field;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * {@link JpaTenantReadIsolationAdapter} 项目自有常量与 Hibernate 内部常量的一致性回归测试（R4）。
+ * {@link JpaTenantReadIsolationAdapter} 项目自有常量与 Hibernate 内部常量的一致性回归测试。
  * <p>
  * 背景：Hibernate {@code @TenantId} 机制依赖 internal 包下的内部类 {@code TenantIdBinder}
  * 中定义的 filter 名与参数名常量（无公开 API 可引用）。生产代码不得引用该 internal 类
- * （prd R4），以项目自有常量镜像其值；本测试用反射在测试期比对，Hibernate 升级如改动
+ * （该内部类无公开 API），以项目自有常量镜像其值；本测试用反射在测试期比对，Hibernate 升级如改动
  * 这两个值即红灯告警（早警网，无运行时内部依赖）。
  * <p>
  * 刻意说明：internal 类全限定名以拼接方式书写

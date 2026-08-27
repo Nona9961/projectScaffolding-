@@ -156,7 +156,7 @@ class CrossTenantTestService {
     }
 
     /**
-     * 在 {@code @CrossTenant} 作用域内删除指定租户实体——注解≠提权（014 决策），带实体删除受写门禁判定（AC5）：
+     * 在 {@code @CrossTenant} 作用域内删除指定租户实体——注解≠提权，带实体删除受写门禁判定：
      * 非提权 + 异租户实体 → 门禁拒绝；本租户实体 → 放行（注解仅撤销读过滤，不撤销写门禁）。
      *
      * @param po 待删除的 tenant-scoped 实体

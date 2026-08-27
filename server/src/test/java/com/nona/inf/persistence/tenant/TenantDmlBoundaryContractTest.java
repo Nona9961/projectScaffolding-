@@ -27,15 +27,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * 契约测试：写门禁边界行为（017 处置，prd R5/R6，design §4.5 写操作形态分类）：
+ * 契约测试：写门禁边界行为（两条件判定 × 写操作形态分类）：
  * <ul>
  *   <li>D1（PO 形态 → 门禁）：非提权 {@code deleteAllInBatch(集合)} 传异租户 PO → 门禁先拒（实验 D 转正）</li>
- *   <li>D2（ID/无参形态 → filter）：非提权无参 {@code deleteAllInBatch()} 仅删本租户行（H3 bulk filter 契约）</li>
- *   <li>E（I1 归属不可变）：managed 实体改 tenantID + flush 后库中仍为原值（实验 E 转正，prd R6）</li>
+ *   <li>D2（ID/无参形态 → filter）：非提权无参 {@code deleteAllInBatch()} 仅删本租户行（bulk filter 契约）</li>
+ *   <li>E（归属不可变）：managed 实体改 tenantID + flush 后库中仍为原值</li>
  *   <li>F（红线实证，{@code @Disabled}）：注解内读异租户实体改业务字段 + flush 会落库越权写——
  *       访问点外操作，R5 文档定责（prd），代码保留作证据，勿启用</li>
  * </ul>
- * 两类防线（design §4.5）：PO 形态 → 门禁判定；ID/无参形态 → filter 兜底。
+ * 两类防线：PO 形态 → 门禁判定；ID/无参形态 → filter 兜底。
  *
  * @author nona9961
  */
@@ -101,7 +101,7 @@ class TenantDmlBoundaryContractTest {
 
     /**
      * 契约 D1（PO 形态 → 门禁先拒）：非提权 {@code deleteAllInBatch(集合)} 传异租户 PO → 参数判定先行拒绝
-     * （design §4.5 写操作形态分类：PO 形态受两条件判定），bulk DML 不可达。
+     * （写操作形态分类：PO 形态受两条件判定），bulk DML 不可达。
      * 原始实验 D 输入即此形态——WU-A 参数判定上线后由门禁拦截，filter 兜底不被此形态触达。
      */
     @Test
@@ -122,7 +122,7 @@ class TenantDmlBoundaryContractTest {
 
     /**
      * 契约 D2（ID/无参形态 → filter 兜底）：非提权无参 {@code deleteAllInBatch()} 无实体参数可判定
-     * → I3 由 Hibernate filter 在目标解析阶段达成（H3，实验 D 结论）：tenant-A 视野下仅删本租户行，
+     * → 写目标合法性由 Hibernate filter 在目标解析阶段达成（bulk 契约）：tenant-A 视野下仅删本租户行，
      * tenant-B 行仍在。filter 对 bulk DML 生效是 Hibernate 行为契约（升级回归清单条目）。
      */
     @Test
@@ -140,7 +140,7 @@ class TenantDmlBoundaryContractTest {
     }
 
     /**
-     * 契约 E（I1 归属不可变，实验 E 转正，prd R6）：managed 实体修改 tenantID + flush 后库中仍为原值。
+     * 契约 E（归属不可变）：managed 实体修改 tenantID + flush 后库中仍为原值。
      * {@code @TenantId} 列不可经实体修改——归属是数据固有属性（JPA 天然支持），写门禁亦不提供归属变更通道。
      */
     @Test
@@ -188,7 +188,7 @@ class TenantDmlBoundaryContractTest {
 
             // 修改业务字段（托管实体脏检查）——注解只授权读，修改是越权写
             foreign.setContent("HACKED-BY-ANNOTATED-READ");
-            entityManager.flush();   // 模拟作用域退出 auto-flush 时点（major-2 方案）
+            entityManager.flush();   // 模拟作用域退出 auto-flush 时点
         });
 
         // 提权视角读回 431 行真实内容（红线实证：内容已被越权改写）

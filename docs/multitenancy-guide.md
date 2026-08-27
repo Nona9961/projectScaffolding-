@@ -148,8 +148,7 @@ public void createCrossShopOrder() throws Exception {
 
 ## 3. 写入门禁
 
-写门禁是**两条件判定**（提权状态 × 实体归属），与操作方法名无关（017 major-1 处置：方法名
-匹配已删除）。规则由 common 模块的纯函数 `TenantWriteGate#decideInjection` 承载——存储无关、
+写门禁是**两条件判定**（提权状态 × 实体归属），与操作方法名无关（删除路径同样受门禁保护；方法名匹配已删除）。规则由 common 模块的纯函数 `TenantWriteGate#decideInjection` 承载——存储无关、
 零 Spring/JPA 依赖（grep 门）；`TenantRepositoryAspect` 只是载体：遍历方法参数中的租户实体 →
 调用判定 → 按返回值执行注入。
 
@@ -172,7 +171,7 @@ public void createCrossShopOrder() throws Exception {
 要点：
 
 - **④（修订）**：提权 + 实体空归属 → **拒绝，不再注入**。归属不可发明——「谁做的」是
-  identity 职责，非租户职责（017 架构审查决策）。空白归属在判定前归一为缺失
+  identity 职责，非租户职责。空白归属在判定前归一为缺失
   （`normalizeTenantID`），故提权 + 空白同样拒绝；
 - **哨兵**：`__MISSING_TENANT__`（视角缺失占位）与 `__ROOT_TENANT__`（全量视角）是框架内部
   值，**不可作为实体归属**——判定前置拒绝，提权/非提权统一语义；
@@ -206,9 +205,9 @@ po.setTenantID("t2"); /* 当前 t1 */ repo.save(po);
 
 要点：
 
-- 旧实现按方法名匹配（仅 save 系列），删除路径不经门禁——已由参数判定取代（017 major-1）；
-- **P1-1**：带实体的删除受门禁判定——注解读放行内删异租户实体照常被拒（§4.5 ⑥）；
-- **P1-2**：带租户实体参数的方法（**含读方法**）都会被判定——读方法参数勿带租户实体（§4.5 ⑥）；
+- 旧实现按方法名匹配（仅 save 系列），删除路径不经门禁——已由参数判定取代；
+- **带实体删除**：带实体的删除受门禁判定——注解读放行内删异租户实体照常被拒（§4.5 ⑥）；
+- **读方法参数**：带租户实体参数的方法（**含读方法**）都会被判定——读方法参数勿带租户实体（§4.5 ⑥）；
 - ID/无参形态的 I3 由 Hibernate discriminator filter 达成：删除前先 SELECT 过滤，异租户行
   load 不到 → 删不掉。**这是 Hibernate 行为契约（实验 D 转正），升级须回归**（§3.5 H3）。
 
@@ -401,7 +400,7 @@ Hibernate 写侧校验（`@TenantId` assigned-id）保留实体显式 `tenantID`
 （`findById` / `findAll` 结果）**不是写入口**——绕过写门禁修改其业务字段并 flush（或依赖
 作用域退出 auto-flush）会把跨租户篡改落库（实证：`TenantDmlBoundaryContractTest#contractF_annotatedReadThenMutateBusinessFieldThenFlush`）。
 框架只承诺 repository 层写入口的门禁与隔离；`EntityManager` 直用 / `JdbcTemplate` / 手动
-`flush()` 直改均不在承诺范围（016 红线延续）。绕过写入口时归属由存储层兜底（写侧校验或显式
+`flush()` 直改均不在承诺范围。绕过写入口时归属由存储层兜底（写侧校验或显式
 租户值保留），**污染自负**。正确姿势：注解内读到的实体仅用于只读计算；要写，把实体归属显式
 声明后走 repository 写入口（非提权写本租户 / 提权写异租户）。
 
@@ -410,14 +409,14 @@ Hibernate 写侧校验（`@TenantId` assigned-id）保留实体显式 `tenantID`
 I2）——**不显式 `flush()` 的挂起写（含注解内被修改的实体）同样会落库**。勿依赖「不显式
 flush 就不落库」；「注解内读到的实体仅供读取」（红线④）是唯一安全语义。
 
-**⑥ P1-1 / P1-2：门禁判定与参数形态绑定**：
+**⑥ 门禁判定与参数形态绑定**：
 
-- **P1-1（带实体删除受门禁）**：注解/提权作用域内调用带**实体参数**的删除
+- **带实体删除受门禁**：注解/提权作用域内调用带**实体参数**的删除
   （`delete(entity)` / `deleteAll(集合)` / `deleteAllInBatch(集合)`）照常过写门禁——非提权删
   异租户实体被拒（`annotatedDeleteWithForeignTenantPoShouldBeRejected`）。注解的读放行
   **不**放行带实体删除；无实体参数的删除（`deleteById` / `deleteAllById` / `deleteAll()` /
   `deleteAllInBatch()`）随 filter 防线（H3 契约，见 §3.5）；
-- **P1-2（读方法参数勿带租户实体）**：门禁对**所有**带 `TenantScopedBasePO` 参数的方法生效，
+- **读方法参数勿带租户实体**：门禁对**所有**带 `TenantScopedBasePO` 参数的方法生效，
   读方法也不例外——以租户实体为直接参数（或 Iterable 内元素）的读方法会按两条件判定，
   参数实体与当前视角不一致即被拒。只读查询请用 ID / 标量 / 非租户探针参数（由 filter 兜底，
   无判定开销）。

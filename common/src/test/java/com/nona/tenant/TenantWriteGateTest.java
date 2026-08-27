@@ -20,7 +20,7 @@ class TenantWriteGateTest {
     // ---- 提权分支（elevated = true）----
 
     @Test
-    @DisplayName("④ 提权 + null 归属 → 拒绝")
+    @DisplayName("提权 + null 归属 → 拒绝")
     void elevatedWithNullTenantShouldReject() {
         assertThatThrownBy(() -> TenantWriteGate.decideInjection(null, "t1", true))
                 .isInstanceOf(BusinessException.class)
@@ -28,7 +28,7 @@ class TenantWriteGateTest {
     }
 
     @Test
-    @DisplayName("④ 提权 + 空白归属 → 拒绝（归一化收口）")
+    @DisplayName("提权 + 空白归属 → 拒绝（归一化收口）")
     void elevatedWithBlankTenantShouldReject() {
         assertThatThrownBy(() -> TenantWriteGate.decideInjection("   ", "t1", true))
                 .isInstanceOf(BusinessException.class)
@@ -62,7 +62,7 @@ class TenantWriteGateTest {
     // ---- 非提权分支（elevated = false）----
 
     @Test
-    @DisplayName("I5 非提权 + context null → 拒绝")
+    @DisplayName("非提权 + context null → 拒绝")
     void nonElevatedWithNullContextShouldReject() {
         assertThatThrownBy(() -> TenantWriteGate.decideInjection("t1", null, false))
                 .isInstanceOf(BusinessException.class)
@@ -70,13 +70,13 @@ class TenantWriteGateTest {
     }
 
     @Test
-    @DisplayName("② 非提权 + null 归属 → 注入 contextTenant")
+    @DisplayName("非提权 + null 归属 → 注入 contextTenant")
     void nonElevatedWithNullTenantShouldInjectContext() {
         assertThat(TenantWriteGate.decideInjection(null, "t1", false)).isEqualTo("t1");
     }
 
     @Test
-    @DisplayName("② 非提权 + 空白归属 → 注入 contextTenant（归一化收口）")
+    @DisplayName("非提权 + 空白归属 → 注入 contextTenant（归一化收口）")
     void nonElevatedWithBlankTenantShouldInjectContext() {
         assertThat(TenantWriteGate.decideInjection("   ", "t1", false)).isEqualTo("t1");
     }
@@ -88,7 +88,7 @@ class TenantWriteGateTest {
     }
 
     @Test
-    @DisplayName("① 非提权 + 归属不一致 → 拒绝")
+    @DisplayName("非提权 + 归属不一致 → 拒绝")
     void nonElevatedWithMismatchedTenantShouldReject() {
         assertThatThrownBy(() -> TenantWriteGate.decideInjection("t2", "t1", false))
                 .isInstanceOf(BusinessException.class)
@@ -114,7 +114,7 @@ class TenantWriteGateTest {
     }
 
     @Test
-    @DisplayName("非提权 + context null + 归属 null → 拒绝 I5 优先于 ②")
+    @DisplayName("非提权 + context null + 归属 null → 拒绝（视角缺失优先于注入）")
     void nonElevatedBothMissingShouldReject() {
         assertThatThrownBy(() -> TenantWriteGate.decideInjection(null, null, false))
                 .isInstanceOf(BusinessException.class)

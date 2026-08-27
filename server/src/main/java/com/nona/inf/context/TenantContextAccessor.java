@@ -24,7 +24,7 @@ public class TenantContextAccessor {
     /**
      * tenant 缺失时使用的占位值，用于 fail-closed（不放行 tenant-scoped 数据）。
      * <p>
-     * 转发常量：权威定义在 common 的 {@link TenantWriteGate#MISSING_TENANT_ID}（017 处置：规则上移 common）。
+     * 转发常量：权威定义在 common 的 {@link TenantWriteGate#MISSING_TENANT_ID}（规则与常量统一上移 common，此处转发以兼容既有调用）。
      * 保留本转发位以兼容现有引用（getTenantIDOrMissing 与测试）。
      */
     public static final String MISSING_TENANT_ID = TenantWriteGate.MISSING_TENANT_ID;

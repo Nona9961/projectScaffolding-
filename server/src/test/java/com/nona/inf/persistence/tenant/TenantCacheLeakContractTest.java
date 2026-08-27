@@ -23,8 +23,8 @@ import java.util.concurrent.Callable;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 契约测试：作用域退出后一级缓存不滞留异租户实体（I2「缓存与视角一致」，017 major-2 处置，
- * design §4.4 flush+clear，prd R4）。
+ * 契约测试：作用域退出后一级缓存不滞留异租户实体（缓存与视角一致：作用域退出触发
+ * flush+clear——先落库保挂起写，再失效一级缓存）。
  * <p>
  * 契约语义：放行（{@code @CrossTenant} / 提权）作用域内读入的异租户实体进入一级缓存；
  * 作用域退出时 {@code JpaTenantScopeExitHandler} 执行 {@code flush()+clear()}（先落库保挂起写、

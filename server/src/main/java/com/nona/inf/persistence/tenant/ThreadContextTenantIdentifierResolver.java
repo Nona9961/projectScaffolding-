@@ -25,7 +25,7 @@ public class ThreadContextTenantIdentifierResolver implements CurrentTenantIdent
     /**
      * 根租户 ID：提权作用域下返回该值以绕过 discriminator 过滤。
      * <p>
-     * 转发常量：权威定义在 common 的 {@link TenantWriteGate#ROOT_TENANT_ID}（017 处置：规则上移 common）。
+     * 转发常量：权威定义在 common 的 {@link TenantWriteGate#ROOT_TENANT_ID}（规则与常量统一上移 common，此处转发以兼容既有调用）。
      */
     public static final String ROOT_TENANT_ID = TenantWriteGate.ROOT_TENANT_ID;
 

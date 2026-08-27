@@ -11,13 +11,13 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 /**
- * 为 {@link CrossTenant} 提供基于 Spring AOP 的读放行拦截（设计 D3）：
+ * 为 {@link CrossTenant} 提供基于 Spring AOP 的读放行拦截：
  * 在方法/类作用域内建立读放行状态（读路径关闭租户过滤），退出后自动恢复。
  * <p>
  * 实现走 {@link TenantPrivilege#withReadBypass(Runnable)}（独立 ScopedValue 读放行状态）——
- * 不写 ThreadContext（与 014 废弃实现的区别）、不激活写提权（写门禁仍只认
+ * 不写 ThreadContext（与旧 ThreadContext 标记实现的区别）、不激活写提权（写门禁仍只认
  * {@link TenantPrivilege#isActive()}）。时序：{@link Ordered#HIGHEST_PRECEDENCE} 保证先于
- * 事务拦截器设置状态，session 打开时 resolver 自查能读到正确模式（013 时序约定）。
+ * 事务拦截器设置状态，session 打开时 resolver 自查能读到正确模式（提权/读放行须罩住事务边界的时序约定）。
  *
  * @author nona9961
  */

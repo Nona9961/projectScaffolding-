@@ -3,7 +3,7 @@ package com.nona.inf.persistence.tenant;
 import com.nona.annotation.ScaffoldGenerated;
 
 /**
- * 存储无关的租户读隔离适配层（设计 D2，prd R3）。
+ * 存储无关的租户读隔离适配层。
  * <p>
  * 能力契约（四能力点，存储实现各自落实）：
  * <ol>
@@ -32,7 +32,7 @@ public interface TenantReadIsolationAdapter {
      * 无已绑定 EntityManager（无事务/无 session）时实现应空操作——该场景由 session 打开时的
      * resolver 自查（第一重保险）覆盖。实现必须可重入、幂等。
      * <p>
-     * TODO(nit-1, 017)：接口形态与能力契约偏差——四能力点（读过滤/读放行/写门禁/提权生命周期）
+     * TODO：接口形态与能力契约偏差——四能力点（读过滤/读放行/写门禁/提权生命周期）
      * 仅由本单方法语义承载，签名未显式表达能力边界，契约靠 javadoc 而非签名保证。
      * 重构方向：能力点显式化为接口方法（与未来 MyBatis 实现形态对齐后落地）。
      */

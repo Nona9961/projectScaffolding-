@@ -9,7 +9,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * 跨租户读放行标记（设计 D3，prd R1）：标注方法（或类）内的<b>读操作</b>关闭租户过滤，
+ * 跨租户读放行标记：标注方法（或类）内的<b>读操作</b>关闭租户过滤，
  * 按全租户可见执行。
  * <ul>
  *   <li><b>只影响读</b>：写门禁不受注解影响——写仍必须显式 {@link TenantPrivilege#elevated(Runnable)}

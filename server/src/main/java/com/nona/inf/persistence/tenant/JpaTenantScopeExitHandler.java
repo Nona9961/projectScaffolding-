@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
- * I2「缓存与视角一致」的 JPA 形态（017 major-2 处置，design §4.4）：作用域退出 → {@code flush()+clear()}。
+ * 「缓存与视角一致」的 JPA 形态：作用域退出 → {@code flush()+clear()}。
  * <p>
  * 提权/读放行作用域退出时（含异常路径）清理当前线程绑定的 EntityManager 一级缓存：
  * <ol>
@@ -23,7 +23,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  * 顺序即正确性：先落库保写，再失效缓存。
  * <p>
  * 无绑定 EM（无事务/无 session）→ 空操作（缓存随事务消亡，无泄露可清）；等价于
- * {@code elevatedInTransaction} 场景（作用域退出晚于事务提交，EM 已解绑——空转属预期，设计 §4.3 minor-2）。
+ * {@code elevatedInTransaction} 场景（作用域退出晚于事务提交，EM 已解绑——空转属预期）。
  * <p>
  * 自注册先例：{@link TenantContextAccessor#registerToTenantPrivilege()}（静态 volatile + {@code @PostConstruct}）。
  *
@@ -37,7 +37,7 @@ public class JpaTenantScopeExitHandler implements TenantScopeExitHandler {
     private final EntityManagerFactory entityManagerFactory;
 
     /**
-     * 注册自身到 {@link TenantPrivilege}（I2 退出通知），幂等；纯单测环境无本组件 → handler 保持 null。
+     * 注册自身到 {@link TenantPrivilege}（作用域退出通知），幂等；纯单测环境无本组件 → handler 保持 null。
      */
     @PostConstruct
     void register() {
@@ -53,7 +53,7 @@ public class JpaTenantScopeExitHandler implements TenantScopeExitHandler {
         final EntityManagerHolder holder =
                 (EntityManagerHolder) TransactionSynchronizationManager.getResource(entityManagerFactory);
         final EntityManager em = holder.getEntityManager();
-        em.flush();  // ① 挂起写落库（不清丢写）
-        em.clear();  // ② 一级缓存失效（I2）
+        em.flush();  // ① 挂起写先落库（不清丢写）
+        em.clear();  // ② 一级缓存失效（缓存与视角一致）
     }
 }
