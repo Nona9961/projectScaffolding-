@@ -1,6 +1,7 @@
 package com.nona.inf.context;
 
 import com.nona.annotation.ScaffoldGenerated;
+import com.nona.tenant.TenantWriteGate;
 import jakarta.annotation.Nullable;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -22,8 +23,11 @@ public class TenantContextAccessor {
 
     /**
      * tenant 缺失时使用的占位值，用于 fail-closed（不放行 tenant-scoped 数据）。
+     * <p>
+     * 转发常量：权威定义在 common 的 {@link TenantWriteGate#MISSING_TENANT_ID}（017 处置：规则上移 common）。
+     * 保留本转发位以兼容现有引用（getTenantIDOrMissing 与测试）。
      */
-    public static final String MISSING_TENANT_ID = "__MISSING_TENANT__";
+    public static final String MISSING_TENANT_ID = TenantWriteGate.MISSING_TENANT_ID;
 
     /**
      * 异步线程回退存储：worker 线程经 {@link #saveSnapshot} 写入

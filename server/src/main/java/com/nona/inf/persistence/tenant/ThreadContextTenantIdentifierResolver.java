@@ -2,6 +2,7 @@ package com.nona.inf.persistence.tenant;
 
 import com.nona.annotation.ScaffoldGenerated;
 import com.nona.inf.context.TenantContextAccessor;
+import com.nona.tenant.TenantWriteGate;
 import com.nona.inf.context.TenantPrivilege;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.context.spi.CurrentTenantIdentifierResolver;
@@ -22,9 +23,11 @@ import org.springframework.stereotype.Component;
 public class ThreadContextTenantIdentifierResolver implements CurrentTenantIdentifierResolver<String> {
 
     /**
-     * 根租户 ID：提权作用域下返回该值以绕过 discriminator 过滤
+     * 根租户 ID：提权作用域下返回该值以绕过 discriminator 过滤。
+     * <p>
+     * 转发常量：权威定义在 common 的 {@link TenantWriteGate#ROOT_TENANT_ID}（017 处置：规则上移 common）。
      */
-    public static final String ROOT_TENANT_ID = "__ROOT_TENANT__";
+    public static final String ROOT_TENANT_ID = TenantWriteGate.ROOT_TENANT_ID;
 
     /**
      * 租户上下文访问器（两级优先级：请求作用域 → 线程回退）

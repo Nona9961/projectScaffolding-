@@ -4,7 +4,7 @@ import com.nona.annotation.ScaffoldGenerated;
 import com.nona.inf.context.TenantContextAccessor;
 import com.nona.inf.context.TenantPrivilege;
 import com.nona.inf.persistence.po.TenantScopedBasePO;
-import com.nona.util.BusinessAssert;
+import com.nona.tenant.TenantWriteGate;
 import lombok.RequiredArgsConstructor;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
@@ -12,10 +12,15 @@ import org.aspectj.lang.annotation.Aspect;
 import org.springframework.stereotype.Component;
 
 /**
- * 多租户隔离（ADR-001 / ADR-007）
+ * 多租户隔离（ADR-001 / ADR-007 / 017 处置：规则上移 common，参数判定取代方法名匹配）
  * <p>
  * 基于 Hibernate discriminator multi-tenancy（@TenantId）实现 tenant-scoped 的自动隔离（读 fail-closed；写自动注入/校验 tenantID）。
- * 写门禁判断源为 {@link com.nona.inf.context.TenantPrivilege}：提权作用域内放行实体显式合法租户，非提权状态强制与当前租户一致。
+ * <p>
+ * 写门禁（design §4.5）只与参数形态有关、与操作方法名无关：遍历参数中的 tenant-scoped 实体
+ * （{@link TenantScopedBasePO} 单参 / Iterable 内 PO 元素），逐实体调用 {@link TenantWriteGate#decideInjection}
+ * 执行两条件判定（提权状态 × 实体归属），按返回值执行 ② 注入。判定逻辑 100% 在 common（纯函数），
+ * 本类只剩遍历与注入执行。ID/无参形态（deleteById/deleteAll()/bulk inBatch）不判，
+ * I3 由 JPA discriminator filter 在目标解析阶段达成（实验 D 契约，升级回归清单）。
  *
  * @author nona9961
  */
@@ -33,21 +38,8 @@ public class TenantRepositoryAspect {
     private final TenantReadIsolationAdapter tenantReadIsolationAdapter;
 
     /**
-     * 规范化 tenantID：{@code null} 或空白字符串视为缺失。
-     *
-     * @param tenantID 原始 tenantID
-     * @return 规范化后的 tenantID；缺失则返回 {@code null}
-     */
-    private static String normalizeTenantID(String tenantID) {
-        if (tenantID == null || tenantID.isBlank()) {
-            return null;
-        }
-        return tenantID;
-    }
-
-    /**
      * 对 Spring Data Repository 的所有访问应用租户规则：
-     * 先由适配层应用读隔离状态（读放行/恢复过滤），再对写入操作执行写门禁。
+     * 先由适配层应用读隔离状态（读放行/恢复过滤），再对参数中的 tenant-scoped 实体执行写门禁。
      *
      * @param joinPoint AOP 连接点
      * @return 原方法返回值
@@ -56,79 +48,51 @@ public class TenantRepositoryAspect {
     @Around("this(org.springframework.data.repository.Repository)")
     public Object applyTenantRules(ProceedingJoinPoint joinPoint) throws Throwable {
         tenantReadIsolationAdapter.applyReadIsolation();
-        enforceTenantWriteIfNeeded(joinPoint);
+        enforceTenantWriteGate(joinPoint.getArgs());
         return joinPoint.proceed();
     }
 
     /**
-     * 若当前调用为写入操作（save/saveAndFlush/saveAll/saveAllAndFlush），则对参数应用租户写入门禁。
+     * 参数遍历 + 门禁执行（写操作形态归类见 design §4.5）：
+     * <ul>
+     *   <li>PO 形态（门禁判定）：save/saveAndFlush/delete(entity) 单参；saveAll/deleteAll(集合)/bulk inBatch(集合) 的 Iterable 元素</li>
+     *   <li>ID/无参形态（filter 兜底）：deleteById/deleteAll()/deleteAllInBatch()——参数取不到租户信息，I3 由 filter 在目标解析阶段达成</li>
+     * </ul>
+     * Iterable 内 null/混合类型元素天然跳过（instanceof 判定）。判定上下文（contextTenant/elevated）只读一次。
      *
-     * @param joinPoint AOP 连接点
+     * @param args 数据访问方法参数
      */
-    private void enforceTenantWriteIfNeeded(ProceedingJoinPoint joinPoint) {
-        final String methodName = joinPoint.getSignature().getName();
-        if ("save".equals(methodName) || "saveAndFlush".equals(methodName)) {
-            final Object[] args = joinPoint.getArgs();
-            if (args == null || args.length == 0) {
-                return;
-            }
-            ensureAndInjectTenantID(args[0]);
+    private void enforceTenantWriteGate(Object[] args) {
+        if (args == null || args.length == 0) {
             return;
         }
-
-        if ("saveAll".equals(methodName) || "saveAllAndFlush".equals(methodName)) {
-            final Object[] args = joinPoint.getArgs();
-            if (args == null || args.length == 0) {
-                return;
-            }
-            final Object first = args[0];
-            if (!(first instanceof Iterable<?> iterable)) {
-                return;
-            }
-            for (Object entity : iterable) {
-                ensureAndInjectTenantID(entity);
+        final String contextTenant = tenantContextAccessor.getTenantID();
+        final boolean elevated = TenantPrivilege.isActive();
+        for (Object arg : args) {
+            if (arg instanceof TenantScopedBasePO po) {
+                applyGate(po, contextTenant, elevated);
+            } else if (arg instanceof Iterable<?> iterable) {
+                for (Object item : iterable) {
+                    if (item instanceof TenantScopedBasePO po) {
+                        applyGate(po, contextTenant, elevated);
+                    }
+                }
             }
         }
     }
 
     /**
-     * 对 tenant-scoped 实体执行写入门禁：
-     * <p>
-     * - 提权作用域内：实体显式携带合法 tenantID 则放行并保留原值（系统编排/superAdmin/C 端跨店下单场景，
-     *   允许上下文无租户）；实体未携带则回退注入当前 tenant（admin 代建场景），此时当前 tenant 必须存在
-     * - 非提权状态：当前 tenant 必须存在；entity tenantID 缺失则注入，不一致则拒绝
+     * 对单个 tenant-scoped 实体执行写门禁并落地 ② 注入。
      *
-     * @param entity 待写入的实体对象
-     * @throws com.nona.exceptions.BusinessException 当租户规则校验失败时抛出
+     * @param po           待写入实体
+     * @param contextTenant 当前视角租户
+     * @param elevated      是否提权（isActive() 一次性判定结果）
+     * @throws com.nona.exceptions.BusinessException ④/哨兵/I5/① 拒绝时由 {@link TenantWriteGate} 抛出
      */
-    private void ensureAndInjectTenantID(Object entity) {
-        if (!(entity instanceof TenantScopedBasePO tenantScopedPO)) {
-            return;
+    private void applyGate(TenantScopedBasePO po, String contextTenant, boolean elevated) {
+        final String inject = TenantWriteGate.decideInjection(po.getTenantID(), contextTenant, elevated);
+        if (inject != null) {
+            po.setTenantID(inject); // 仅 ② 注入发生时写实体；放行(null)不触碰归属
         }
-
-        final String entityTenantID = normalizeTenantID(tenantScopedPO.getTenantID());
-        final String tenantID = tenantContextAccessor.getTenantID();
-
-        if (TenantPrivilege.isActive()) {
-            if (entityTenantID != null) {
-                BusinessAssert.assertTrue(!TenantContextAccessor.MISSING_TENANT_ID.equals(entityTenantID),
-                        "invalid tenantID: {}", entityTenantID);
-                return;
-            }
-            BusinessAssert.assertNonNull(tenantID,
-                    "tenantID is required to inject into tenant-scoped write");
-            tenantScopedPO.setTenantID(tenantID);
-            return;
-        }
-
-        BusinessAssert.assertNonNull(tenantID, "tenantID is required for tenant-scoped write operation");
-
-        if (entityTenantID == null) {
-            tenantScopedPO.setTenantID(tenantID);
-            return;
-        }
-
-        BusinessAssert.assertTrue(tenantID.equals(entityTenantID),
-                "cross-tenant write is forbidden. currentTenant={}, entityTenant={}", tenantID, entityTenantID);
     }
 }

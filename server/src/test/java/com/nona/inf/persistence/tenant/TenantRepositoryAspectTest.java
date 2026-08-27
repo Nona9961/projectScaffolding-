@@ -418,16 +418,19 @@ class TenantRepositoryAspectTest {
     }
 
     /**
-     * 验证提权作用域 + entity tenantID 缺失 → 注入当前 tenant（admin 普通创建场景）。
+     * 验证提权作用域 + entity tenantID 缺失 → 拒绝（④ 修订，017 处置 R1：归属不可发明，fail-closed）。
+     * <p>
+     * 旧语义为「注入当前 tenant」（admin 普通创建场景）；2026-08-27 架构审查判定 ④ 为契约级错误：
+     * 「谁做的」是 identity 职责，非租户职责——提权 + 空归属写必须显式报错，而非发明归属。
+     * 对应 common 单测 {@code TenantWriteGateTest#elevatedWithNullTenantShouldReject}。
      */
     @Test
-    void crossTenantWriteShouldInjectCurrentTenantWhenEntityTenantMissing() {
+    void elevatedWriteWithNullTenantShouldFail() {
         threadContext.setTenantID("t1");
-        elevatedTenantTestService.saveNoteWithoutTenantID(71L, "note-from-admin");
 
-        threadContext.setTenantID("t1");
-        assertThat(tenantNoteRepository.findAll()).hasSize(1);
-        assertThat(tenantNoteRepository.findAll().get(0).getContent()).isEqualTo("note-from-admin");
+        assertThrows(BusinessException.class,
+                () -> elevatedTenantTestService.saveNoteWithoutTenantID(71L, "note-from-admin"));
+        assertThat(elevatedTenantTestService.listAllNotes()).isEmpty();
     }
 
     /**
@@ -665,5 +668,127 @@ class TenantRepositoryAspectTest {
         assertThat(elevatedTenantTestService.listAllNotes())
                 .extracting(TestTenantNotePO::getId)
                 .doesNotContain(202L);
+    }
+
+    // ==================== R2/I3 删除门禁（AC3/AC4/AC5；参数判定覆盖 delete 系列，design §4.5 / §5.2）====================
+
+    /**
+     * 验证非提权 {@code delete(entity)} 删异租户实体 → 拒绝（AC3：
+     * 写门禁判定不依赖方法名——带实体参数的删除同样受两条件判定）。
+     */
+    @Test
+    void nonElevatedDeleteWithForeignTenantShouldBeRejected() {
+        threadContext.setTenantID("tenant-A");
+        final LocalDateTime now = LocalDateTime.now();
+
+        final TestTenantNotePO poB = new TestTenantNotePO();
+        poB.setId(501L);
+        poB.setTenantID("tenant-B");
+        poB.setContent("foreign");
+        poB.setCreateTime(now);
+        poB.setUpdateTime(now);
+
+        assertThrows(BusinessException.class, () -> tenantNoteRepository.delete(poB));
+        assertThat(elevatedTenantTestService.listAllNotes()).isEmpty();
+    }
+
+    /**
+     * 验证非提权 {@code deleteAll(集合)} 删异租户实体 → 拒绝（AC3：Iterable 内 PO 元素逐实体判定）。
+     */
+    @Test
+    void nonElevatedDeleteAllWithForeignTenantShouldBeRejected() {
+        threadContext.setTenantID("tenant-A");
+        final LocalDateTime now = LocalDateTime.now();
+
+        final TestTenantNotePO poB = new TestTenantNotePO();
+        poB.setId(502L);
+        poB.setTenantID("tenant-B");
+        poB.setContent("foreign");
+        poB.setCreateTime(now);
+        poB.setUpdateTime(now);
+
+        assertThrows(BusinessException.class, () -> tenantNoteRepository.deleteAll(List.of(poB)));
+        assertThat(elevatedTenantTestService.listAllNotes()).isEmpty();
+    }
+
+    /**
+     * 验证非提权删本租户实体 → 正常（AC4：先提权造数据，恢复隔离后 delete 本租户实体）。
+     */
+    @Test
+    void nonElevatedDeleteOwnTenantShouldSucceed() {
+        threadContext.setTenantID("tenant-A");
+        final LocalDateTime now = LocalDateTime.now();
+
+        final TestTenantNotePO po = new TestTenantNotePO();
+        po.setId(503L);
+        po.setContent("own");
+        po.setCreateTime(now);
+        po.setUpdateTime(now);
+        tenantNoteRepository.save(po);
+        assertThat(elevatedTenantTestService.listAllNotes()).hasSize(1);
+
+        tenantNoteRepository.delete(po);
+
+        assertThat(elevatedTenantTestService.listAllNotes()).isEmpty();
+    }
+
+    /**
+     * 验证提权删异租户实体 → 放行（AC4：提权为写门禁唯一判断源，显式异租户归属放行，I1 不注入）。
+     * <p>
+     * 数据由 {@code ElevatedTenantTestService#saveNoteForTenant} 提权创建；删除在提权作用域内
+     * 直接调 repository（服务类不在本次改动范围）。
+     */
+    @Test
+    void elevatedDeleteForeignTenantShouldSucceed() {
+        threadContext.setTenantID("tenant-A");
+        elevatedTenantTestService.saveNoteForTenant("tenant-B", 504L, "foreign");
+        assertThat(elevatedTenantTestService.listAllNotes()).hasSize(1);
+
+        final LocalDateTime now = LocalDateTime.now();
+        final TestTenantNotePO poB = new TestTenantNotePO();
+        poB.setId(504L);
+        poB.setTenantID("tenant-B");
+        poB.setContent("foreign");
+        poB.setCreateTime(now);
+        poB.setUpdateTime(now);
+
+        TenantPrivilege.elevated(() -> tenantNoteRepository.delete(poB));
+
+        assertThat(elevatedTenantTestService.listAllNotes()).isEmpty();
+    }
+
+    /**
+     * 验证注解内带实体删除异租户 → 门禁拒绝（AC5：注解≠提权，014 决策——注解只撤销读过滤；
+     * 带实体参数的删除仍受两条件判定）。
+     */
+    @Test
+    void annotatedDeleteWithForeignTenantPoShouldBeRejected() {
+        threadContext.setTenantID("tenant-A");
+        elevatedTenantTestService.saveNoteForTenant("tenant-B", 505L, "foreign");
+
+        final LocalDateTime now = LocalDateTime.now();
+        final TestTenantNotePO poB = new TestTenantNotePO();
+        poB.setId(505L);
+        poB.setTenantID("tenant-B");
+        poB.setContent("foreign");
+        poB.setCreateTime(now);
+        poB.setUpdateTime(now);
+
+        assertThrows(BusinessException.class, () -> crossTenantTestService.deleteNote(poB));
+        assertThat(elevatedTenantTestService.listAllNotes()).hasSize(1);
+    }
+
+    /**
+     * 验证提权 + 空白归属 → 拒绝（④ 修订 + 归一化收口：空白归一为空归属，见
+     * {@code TenantWriteGateTest#elevatedWithBlankTenantShouldReject}）。
+     * {@code saveNoteForTenant} 可传入任意字符串，故以 "   " 形态直探门禁。
+     */
+    @Test
+    void elevatedWriteWithBlankTenantShouldFail() {
+        threadContext.setTenantID("tenant-A");
+
+        assertThrows(BusinessException.class,
+                () -> elevatedTenantTestService.saveNoteForTenant("   ", 506L, "blank"));
+        assertThat(elevatedTenantTestService.listAllNotes()).isEmpty();
     }
 }
