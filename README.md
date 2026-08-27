@@ -55,8 +55,6 @@ mvn clean test
 mvn spring-boot:run -pl server
 ```
 
-> 若 changeTracking 为私有仓库，clone/install 需要 GitHub 账号认证（SSH key 或 HTTPS token）。
-
 ## 快速开始
 
 ```bash
