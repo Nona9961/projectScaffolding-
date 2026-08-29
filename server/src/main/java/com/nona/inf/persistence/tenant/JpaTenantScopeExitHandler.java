@@ -47,13 +47,12 @@ public class JpaTenantScopeExitHandler implements TenantScopeExitHandler {
     public void onScopeExited() {
         final EntityManagerFactory entityManagerFactory = entityManagerFactoryProvider.getObject();
         if (!TransactionSynchronizationManager.hasResource(entityManagerFactory)) {
-            // 无绑定 EM → 无缓存可清（hasResource 先于 getResource，防 ClassCast）
             return;
         }
         final EntityManagerHolder holder =
                 (EntityManagerHolder) TransactionSynchronizationManager.getResource(entityManagerFactory);
         final EntityManager em = holder.getEntityManager();
-        em.flush();  // ① 挂起写先落库（不清丢写）
-        em.clear();  // ② 一级缓存失效（缓存与视角一致）
+        em.flush();
+        em.clear();
     }
 }
