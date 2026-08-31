@@ -9,15 +9,15 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 红测试专用异常触发源（测试基建，仅存在于测试源码树，main 零改动）。
+ * 契约测试专用异常触发源（测试基建，仅存在于测试源码树，main 零改动）。
  * <p>
  * 脚手架 main 无任何 Controller，MockMvc 契约测试需由本类显式触发各类异常：
  * <ul>
  *     <li>{@code GET /advice/business/not-found}：BusinessException + {@link BusinessCode#NOT_FOUND}
- *         （未显式状态 → 业务码默认映射 404，C2/C3）</li>
+ *         （未显式状态 → 业务码默认映射 404）</li>
  *     <li>{@code GET /advice/business/conflict}：BusinessException + 显式 409
- *         （显式状态优先于业务码默认映射，C2）</li>
- *     <li>{@code GET /advice/business/message-only}：message-only 构造器（businessCode=null → 兜底 500，C2）</li>
+ *         （显式状态优先于业务码默认映射）</li>
+ *     <li>{@code GET /advice/business/message-only}：message-only 构造器（businessCode=null → 兜底 500）</li>
  *     <li>{@code POST /advice/validate}：{@code @Valid} 触发 {@code MethodArgumentNotValidException}</li>
  *     <li>{@code GET /advice/runtime}：未处理运行时异常（兜底 500，不泄露内部细节）</li>
  * </ul>
@@ -31,26 +31,41 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class AdviceTriggerController {
 
+    /**
+     * 触发带业务码、无显式状态的业务异常（按业务码默认映射 404）。
+     */
     @GetMapping("/advice/business/not-found")
     public String businessNotFound() {
         throw new BusinessException(BusinessCode.NOT_FOUND.code(), "resource not found");
     }
 
+    /**
+     * 触发显式状态优先于业务码默认映射的业务异常（409）。
+     */
     @GetMapping("/advice/business/conflict")
     public String businessConflict() {
         throw new BusinessException(BusinessCode.VALIDATION_FAILED.code(), "conflict state", 409);
     }
 
+    /**
+     * 触发 message-only 构造器的业务异常（业务码为 null，兜底 500）。
+     */
     @GetMapping("/advice/business/message-only")
     public String businessMessageOnly() {
         throw new BusinessException("legacy message only");
     }
 
+    /**
+     * 校验失败请求入口：{@code @Valid} 校验失败时抛出异常。
+     */
     @PostMapping("/advice/validate")
     public String validate(@Valid @RequestBody AdvicePayload payload) {
         return "ok";
     }
 
+    /**
+     * 触发未处理运行时异常（兜底 500）。
+     */
     @GetMapping("/advice/runtime")
     public String runtime() {
         throw new IllegalStateException("boom-detail-xyz");

@@ -29,7 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *     <li>{@code NoResourceFoundException}（未匹配路径）→ 404 + {@code BusinessCode.NOT_FOUND}</li>
  *     <li>{@code RuntimeException} 兜底 → 500 + {@code BusinessCode.INTERNAL_ERROR} + 通用消息（不泄露内部细节）</li>
  * </ul>
- * 测试基建结论（红阶段冒烟验证）：
+ * 测试基建结论：
  * <ul>
  *     <li>默认 {@code @AutoConfigureMockMvc(addFilters=true)} 会应用 Boot 默认安全链
  *         （{@code anyRequest().authenticated()} + httpBasic/formLogin），无凭证 MockMvc 请求被
@@ -40,11 +40,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *         （checked ServletException，不落入 RuntimeException 兜底，需显式 handler）→
  *         {@link #unmappedPathShouldMapTo404NotFound()} 成立</li>
  * </ul>
- * 红态说明（当前）：server main 的 ExceptionAdviser 仍调用旧式 {@code HttpResponse.fail(String)} /
- * {@code fail(Map)}（新 API 已冻结），main 编译失败阻塞本模块全部测试 →
- * 红因 = ExceptionAdviser 未按契约改造（编译失败 + 语义未实现，双因归属同一对象）。
- * 绿阶段先修 ExceptionAdviser 编译，本测试即转入断言红（HTTP 200 vs 期望 4xx/5xx），
- * 实现完成后转绿。
  *
  * @author nona9961
  */
@@ -60,7 +55,7 @@ class ExceptionAdviserTest {
     @Test
     @DisplayName("H: BusinessException(NOT_FOUND) → 404 + code=generic.not_found + success=false + message 透传")
     void businessExceptionWithBusinessCodeShouldMapToMappedStatus() throws Exception {
-        MvcResult result = mockMvc.perform(get("/advice/business/not-found"))
+        final MvcResult result = mockMvc.perform(get("/advice/business/not-found"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("generic.not_found"))
                 .andExpect(jsonPath("$.success").value(false))
