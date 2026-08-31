@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 契约红测试：{@link BusinessException} 新形态（业务码 + 可选显式 HTTP 状态码，零 spring 依赖）。
+ * 契约测试：{@link BusinessException} 新形态（业务码 + 可选显式 HTTP 状态码，零 spring 依赖）。
  * <p>
  * 契约要点：
  * <ul>
@@ -16,8 +16,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  *     <li>状态解析顺序：显式 httpStatus &gt; BusinessCode 默认映射 &gt; 未知码默认 500</li>
  *     <li>访问器：{@code getBusinessCode()} / {@code getHttpStatus()}</li>
  * </ul>
- * 当前实现仅有 message-only 构造器：新构造器与访问器均不存在，测试编译失败即红，
- * 红因 = 新契约未实现。
  *
  * @author nona9961
  */

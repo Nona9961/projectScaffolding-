@@ -7,7 +7,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 /**
- * 契约红测试：{@link BusinessCode} 枚举默认状态映射（零 spring 依赖，HTTP 状态码用 int）。
+ * 契约测试：{@link BusinessCode} 枚举默认状态映射（零 spring 依赖，HTTP 状态码用 int）。
  * <p>
  * 契约要点：
  * <ul>
@@ -15,8 +15,6 @@ import static org.assertj.core.api.Assertions.assertThatCode;
  *         {@code generic.validation_failed}→400、{@code generic.not_found}→404</li>
  *     <li>映射 API：{@code int defaultStatus(String code)}——已知码→映射状态，未知码→默认 500</li>
  * </ul>
- * 当前实现中 {@link BusinessCode} 类尚不存在，测试编译失败即红，红因 = 新契约未实现。
- * <p>
  * 注：业务码以码值字面量断言（契约冻结的是码值；枚举成员名不属于契约）。
  *
  * @author nona9961
