@@ -2,8 +2,6 @@ package com.nona.inf.persistence.po;
 
 import jakarta.persistence.*;
 import lombok.Data;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
 
 import java.time.LocalDateTime;
 import com.nona.annotation.ScaffoldGenerated;
@@ -27,17 +25,15 @@ public abstract class BasePO {
     protected Long id;
 
     /**
-     * 创建时间（自动填充，不可更新）
+     * 创建时间（不可更新；由业务代码手动填充，无自动审计机制——脚手架既有约定）
      */
     @Column(nullable = false, updatable = false)
-    @CreatedDate
     protected LocalDateTime createTime;
 
     /**
-     * 更新时间（自动维护）
+     * 更新时间（由业务代码手动维护，无自动审计机制）
      */
     @Column(nullable = false)
-    @LastModifiedDate
     protected LocalDateTime updateTime;
 
 
