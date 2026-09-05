@@ -5,8 +5,9 @@ import org.springframework.core.task.TaskDecorator;
 import com.nona.annotation.ScaffoldGenerated;
 
 /**
- * 将 {@link ThreadContext}（tenantID / role / identity）及追踪基线传播到异步
- * worker 线程：经 {@link TenantContextAccessor} 的静态 {@link ScopedValue} 回退槽。
+ * 将当前上下文三元组（tenantID / role / identity）及追踪基线传播到异步
+ * worker 线程：经 {@link TenantContextAccessor} 的静态 {@link ScopedValue} 回退槽
+ * 与 {@link TrackingContext} 作用域双槽嵌套绑定还原。
  * <p>
  * <strong>生命周期</strong>：
  * <ol>
@@ -46,7 +47,7 @@ public class RequestContextPropagatingTaskDecorator implements TaskDecorator {
     /**
      * {@inheritDoc}
      * <p>
-     * 提交线程经访问器捕获当前 {@link ThreadContext} 的
+     * 提交线程经访问器捕获当前上下文的
      * {@link TenantContextAccessor.ContextSnapshot}（三元组 + 追踪基线深拷贝），
      * worker 线程经 {@link TenantContextAccessor#withSnapshot} 与
      * {@link TrackingContext#withScope} 双槽嵌套绑定后执行任务。

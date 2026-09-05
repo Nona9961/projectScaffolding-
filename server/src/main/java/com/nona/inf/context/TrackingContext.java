@@ -9,7 +9,7 @@ import java.util.Objects;
 
 /**
  * 跟踪上下文静态门面：请求 / 追踪上下文统一到单一 {@link ScopedValue} 通道
- * （{@code TrackingScope} 持有者载体），替代请求作用域 {@code ThreadContext} 成为主通路。
+ * （{@code TrackingScope} 持有者载体），作为请求 / 追踪上下文的唯一主通路。
  * <p>
  * 语义要点：
  * <ul>
