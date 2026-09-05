@@ -41,7 +41,7 @@
 | `com.nona` | 应用入口 `ProjectApplication`（JPA 仓库扫描配置） |
 | `com.nona.application.advice` | 全局异常处理 `ExceptionAdviser` |
 | `com.nona.domain.<aggregate>` | DDD 领域层：`entity`（聚合根/值对象/枚举）、`factory`、`ports`（ACL）、`repo` |
-| `com.nona.inf.context` | 跨切面请求上下文：`ThreadContext`、`TenantContextAccessor`、`TenantPrivilege`（提权/读放行作用域）、`@CrossTenant`、异步传播装饰器 |
+| `com.nona.inf.context` | 跨切面请求上下文：`TrackingContext` / `TrackingScope`（单级 ScopedValue 主通道）、`TrackingFilter`、`TenantContextAccessor`、`TenantPrivilege`（提权/读放行作用域）、`@CrossTenant`、异步传播装饰器 |
 | `com.nona.inf.persistence.po` | JPA PO 基类：`BasePO` / `TenantScopedBasePO` |
 | `com.nona.inf.persistence.converters` | DO ↔ PO 转换：`PoConverter` / `CompositePoConverter` / `ConverterRegistry` |
 | `com.nona.inf.persistence.repository` | `DifferRepository`（基于变更追踪的仓储基类） |
