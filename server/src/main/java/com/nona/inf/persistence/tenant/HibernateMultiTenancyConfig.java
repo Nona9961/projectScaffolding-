@@ -10,7 +10,7 @@ import java.util.Map;
 import com.nona.annotation.ScaffoldGenerated;
 
 /**
- * Hibernate 多租户配置：注册 {@link ThreadContextTenantIdentifierResolver} 到 Hibernate 属性中。
+ * Hibernate 多租户配置：注册 {@link TrackingContextTenantIdentifierResolver} 到 Hibernate 属性中。
  *
  * @author nona
  */
@@ -19,7 +19,7 @@ import com.nona.annotation.ScaffoldGenerated;
 @ScaffoldGenerated
 public class HibernateMultiTenancyConfig {
 
-    private final ThreadContextTenantIdentifierResolver tenantIdentifierResolver;
+    private final TrackingContextTenantIdentifierResolver tenantIdentifierResolver;
 
     /**
      * 注册 Hibernate 的 tenant identifier resolver，用于 discriminator multi-tenancy（{@code @TenantId}）。

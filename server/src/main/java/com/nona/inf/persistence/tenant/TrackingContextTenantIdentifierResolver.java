@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 /**
  * Hibernate tenant identifier resolver（discriminator multi-tenancy）
  * <p>
- * - 默认：使用当前 ThreadContext 的 tenantID
+ * - 默认：使用当前跟踪作用域 holder（{@code TrackingScope}）的 tenantID
  * - tenant 缺失：返回 {@link TenantContextAccessor#MISSING_TENANT_ID} 实现 fail-closed
  * - 任一读放行作用域（提权或 {@code @CrossTenant}）：返回 root tenant，绕过 Hibernate 内置的 _tenantId filter
  *
@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 @ScaffoldGenerated
-public class ThreadContextTenantIdentifierResolver implements CurrentTenantIdentifierResolver<String> {
+public class TrackingContextTenantIdentifierResolver implements CurrentTenantIdentifierResolver<String> {
 
     /**
      * 根租户 ID：提权作用域下返回该值以绕过 discriminator 过滤。
