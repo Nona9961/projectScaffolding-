@@ -1,5 +1,6 @@
 package com.nona.inf.persistence.tracking;
 
+import com.nona.changeTracking.domain.capability.TrackingCapability;
 import com.nona.changeTracking.domain.model.tracking.ChangeTracker;
 import com.nona.changeTracking.spi.TrackingCapabilityProvider;
 import lombok.extern.slf4j.Slf4j;
@@ -99,13 +100,18 @@ public class ChangeTrackerProvider {
     }
 
     /**
-     * 创建新的 ChangeTracker 实例
+     * 创建配置好的追踪能力单元（{@link TrackingCapability}）。
      * <p>
-     * 每次调用返回一个独立的实例，适用于请求级别的生命周期管理。
+     * 内部配置装配路径（SPI 能力发现 / 名称选择、标识符提取器、值类型、值类型包）的
+     * 统一出口——{@link #create()} 与异步基线重建
+     * （{@code ChangeTracker.fromBaseline(createCapability(), baseline)}——tracker
+     * 首次创建钩子）复用本路径，装配行为一致。
+     * <p>
+     * 每次调用返回一个新的能力实例（与 {@link #create()} 的每次新实例语义一致）。
      *
-     * @return 配置好的 ChangeTracker 实例
+     * @return 配置好的 TrackingCapability 实例
      */
-    public ChangeTracker create() {
+    public TrackingCapability<?> createCapability() {
         if (providerClass == null) {
             synchronized (this) {
                 if (providerClass == null) {
@@ -128,7 +134,18 @@ public class ChangeTrackerProvider {
             provider.withValuePackage(packageName);
         }
 
-        return new ChangeTracker(provider.create());
+        return provider.create();
+    }
+
+    /**
+     * 创建新的 ChangeTracker 实例
+     * <p>
+     * 每次调用返回一个独立的实例，适用于请求级别的生命周期管理。
+     *
+     * @return 配置好的 ChangeTracker 实例
+     */
+    public ChangeTracker create() {
+        return new ChangeTracker(createCapability());
     }
 
     /**

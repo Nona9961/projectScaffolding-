@@ -3,6 +3,7 @@ package com.nona.inf.context;
 import com.nona.annotation.ScaffoldGenerated;
 import com.nona.changeTracking.domain.model.tracking.ChangeTracker;
 import com.nona.inf.persistence.tracking.ChangeTrackerProvider;
+import jakarta.annotation.Nullable;
 
 import java.util.List;
 import java.util.Objects;
@@ -21,8 +22,10 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>三元组（tenantID / role / identity）：消费者授权过滤器的迁移写入目标
  *       （原 {@code threadContext.setX} 路径改为本持有者 setter，须运行在 {@link TrackingContext#withScope} 作用域内）</li>
  *   <li>{@code snapshots}：根对象注册表（{@code DifferRepository.isTracked} 读、快照登记写）</li>
- *   <li>{@code tracker}：懒创建——首次 {@link #getOrCreateTracker} 时才经
- *       {@link ChangeTrackerProvider} 创建并留存，非 DB 访问路径永不创建</li>
+ *   <li>{@code tracker}：懒创建——首次 {@link #getOrCreateTracker} 时才创建并留存，
+ *       非 DB 访问路径永不创建；异步 worker 场景（SNAPSHOT 槽携带非空
+ *       {@code trackingBaseline}）从基线重建（{@code ChangeTracker.fromBaseline}，不重脱水），
+ *       其余路径维持 {@code provider.create()} 懒语义</li>
  * </ul>
  *
  * @author nona9961
@@ -122,9 +125,16 @@ public final class TrackingScope {
     }
 
     /**
-     * 获取当前作用域的变更追踪器；尚未创建时经 {@code provider.create()} 懒创建并留存。
+     * 获取当前作用域的变更追踪器；尚未创建时懒创建并留存。
      * <p>
-     * 幂等：同一作用域内重复调用返回同一实例，{@code provider.create()} 至多调用一次；
+     * <strong>首次创建钩子</strong>：创建时刻检查 SNAPSHOT 槽已绑定快照
+     * （{@link TenantContextAccessor#boundSnapshot()}）——快照携带非空
+     * {@code trackingBaseline}（异步 worker：提交线程已导出基线）时经
+     * {@code ChangeTracker.fromBaseline(provider.createCapability(), baseline)} 从基线重建，
+     * <b>不重新脱水</b>（对已修改实体重新 track 会得到空 diff，变更静默丢失）；
+     * 否则维持 {@code provider.create()}（懒语义不变）。基线不存在是合法态（纯读传播）。
+     * <p>
+     * 幂等：同一作用域内重复调用返回同一实例，提供者创建路径至多执行一次；
      * 非 DB 访问路径不调用本方法，则永不创建追踪器。
      *
      * @param provider ChangeTracker 创建提供者；不得为 {@code null}
@@ -135,10 +145,38 @@ public final class TrackingScope {
         if (tracker == null) {
             synchronized (this) {
                 if (tracker == null) {
-                    tracker = provider.create();
+                    tracker = createTrackerFromBoundBaselineOrPlain(provider);
                 }
             }
         }
         return tracker;
+    }
+
+    /**
+     * 查询当前作用域是否已创建追踪器（无副作用，不触发创建）。
+     * <p>
+     * 供快照捕获路径（{@link TenantContextAccessor#captureSnapshot()}）使用：
+     * <b>仅当</b>追踪器已存在时才允许导出基线（{@code captureBaseline()} 深拷贝），
+     * 保证「非 DB 请求永不创建追踪器」的懒语义不被捕获动作破坏。
+     *
+     * @return 已创建的追踪器；尚未创建时返回 {@code null}
+     */
+    @Nullable
+    public ChangeTracker trackerIfPresent() {
+        return tracker;
+    }
+
+    /**
+     * 首次创建路径：SNAPSHOT 槽携带非空基线时从基线重建，否则走提供者普通创建。
+     *
+     * @param provider ChangeTracker 创建提供者；不得为 {@code null}
+     * @return 新创建的 ChangeTracker 实例
+     */
+    private ChangeTracker createTrackerFromBoundBaselineOrPlain(ChangeTrackerProvider provider) {
+        final TenantContextAccessor.ContextSnapshot bound = TenantContextAccessor.boundSnapshot();
+        if (bound != null && bound.trackingBaseline() != null) {
+            return ChangeTracker.fromBaseline(provider.createCapability(), bound.trackingBaseline());
+        }
+        return provider.create();
     }
 }
