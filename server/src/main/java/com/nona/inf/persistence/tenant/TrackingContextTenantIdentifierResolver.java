@@ -2,8 +2,8 @@ package com.nona.inf.persistence.tenant;
 
 import com.nona.annotation.ScaffoldGenerated;
 import com.nona.inf.context.TenantContextAccessor;
-import com.nona.tenant.TenantWriteGate;
 import com.nona.inf.context.TenantPrivilege;
+import com.nona.tenant.TenantWriteGate;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.context.spi.CurrentTenantIdentifierResolver;
 import org.springframework.stereotype.Component;

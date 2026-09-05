@@ -26,7 +26,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * 载体）：提交线程经 {@link TrackingContext#withScope} 写入 holder，装饰器捕获快照，
  * worker 线程以双槽嵌套绑定（withSnapshot 外、withScope 内）还原。
  *
- * @author nona
+ * @author nona9961
  */
 @SpringBootTest(classes = ProjectApplication.class)
 @ScaffoldGenerated

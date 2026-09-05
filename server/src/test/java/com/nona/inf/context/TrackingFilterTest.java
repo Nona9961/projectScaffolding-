@@ -22,8 +22,7 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * {@link TrackingFilter} 场景测试：HTTP 入口作用域绑定契约。
  * <p>
- * 契约验证点（红阶段 {@code doFilterInternal} 为 UOE 占位——运行时红因 = 实现缺失；
- * 绿阶段以 {@code TrackingContext.withScope(() -> chain.doFilter(...))} 落地后转绿）：
+ * 契约验证点：
  * <ul>
  *   <li>Happy：doFilter 调用链在 withScope 作用域内执行（链内 {@code scope()} 非 null，
  *       且经提供者懒创建 tracker 可用）</li>
@@ -81,8 +80,8 @@ class TrackingFilterTest {
      * 未绑定场景调用 tracker() 的 fail-closed 异常语义由 {@link TrackingContextTest}
      * {@code shouldFailClosedWhenTrackerCalledWithoutBoundScope} 覆盖。
      * <p>
-     * 红阶段本用例即通过（实现缺失时线程天然无绑定），属预期：它锁的是「Filter 必须
-     * 包裹链路」这一契约正向面，若未来误接非包裹路径（如直调业务代码）将转为失败。
+     * 本用例锁定「Filter 必须包裹链路」这一契约正向面：请求绕过过滤器（链路闭包直接
+     * 执行）时线程天然无绑定；若未来误接非包裹路径（如直调业务代码）将转为失败。
      */
     @Test
     void shouldLeaveThreadUnboundWhenRequestBypassesFilter() {

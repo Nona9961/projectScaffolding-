@@ -1,8 +1,8 @@
 package com.nona.inf.context;
 
+import com.nona.annotation.ScaffoldGenerated;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.task.TaskDecorator;
-import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * 将当前上下文三元组（tenantID / role / identity）及追踪基线传播到异步
@@ -26,7 +26,7 @@ import com.nona.annotation.ScaffoldGenerated;
  * }</pre>
  * 不提供自动配置——每个异步执行器必须显式接入。
  *
- * @author nona
+ * @author nona9961
  */
 @Slf4j
 @ScaffoldGenerated
@@ -35,10 +35,9 @@ public class RequestContextPropagatingTaskDecorator implements TaskDecorator {
     private final TenantContextAccessor tenantContextAccessor;
 
     /**
-     * Constructs a new decorator that uses the given accessor to snapshot the submitting
-     * thread's context.
+     * 构造装饰器：使用给定的访问器在提交线程捕获上下文快照。
      *
-     * @param tenantContextAccessor the context accessor (expected to be a singleton Spring bean)
+     * @param tenantContextAccessor 上下文访问器（预期为单例 Spring bean）
      */
     public RequestContextPropagatingTaskDecorator(TenantContextAccessor tenantContextAccessor) {
         this.tenantContextAccessor = tenantContextAccessor;

@@ -220,9 +220,9 @@ public class TenantContextAccessor {
      * 提交线程无追踪器时为 {@code null}）。attributes 与快照被有意排除——
      * 它们可能携带作用域可变状态。
      *
-     * @param tenantID        租户 ID；可能为 null
-     * @param role            角色列表；可能为 null
-     * @param identity        请求者身份；可能为 null
+     * @param tenantID         租户 ID；可能为 null
+     * @param role             角色列表；可能为 null
+     * @param identity         请求者身份；可能为 null
      * @param trackingBaseline 追踪基线（深拷贝）；无追踪器时为 null
      */
     public record ContextSnapshot(

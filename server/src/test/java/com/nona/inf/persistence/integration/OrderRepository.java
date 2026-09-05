@@ -1,5 +1,6 @@
 package com.nona.inf.persistence.integration;
 
+import com.nona.annotation.ScaffoldGenerated;
 import com.nona.changeTracking.domain.model.changeset.*;
 import com.nona.changeTracking.domain.model.snapshot.NullNode;
 import com.nona.changeTracking.domain.model.snapshot.ObjectNode;
@@ -12,7 +13,6 @@ import org.springframework.data.repository.ListCrudRepository;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.*;
-import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * Order 聚合根的仓储实现

@@ -1,7 +1,7 @@
 package com.nona.inf.persistence.tenant;
 
-import com.nona.annotation.ScaffoldGenerated;
 import com.nona.ProjectApplication;
+import com.nona.annotation.ScaffoldGenerated;
 import com.nona.exceptions.BusinessException;
 import com.nona.inf.context.TenantPrivilege;
 import com.nona.inf.context.TrackingContext;
@@ -94,7 +94,7 @@ class TenantDmlBoundaryContractTest {
     /**
      * 契约 D1（PO 形态 → 门禁先拒）：非提权 {@code deleteAllInBatch(集合)} 传异租户 PO → 参数判定先行拒绝
      * （写操作形态分类：PO 形态受两条件判定），bulk DML 不可达。
-     * 原始实验 D 输入即此形态——WU-A 参数判定上线后由门禁拦截，filter 兜底不被此形态触达。
+     * 原始实验 D 输入即此形态——参数判定先行拦截，filter 兜底不被此形态触达。
      */
     @Test
     void contractD1_poFormDeleteAllInBatchWithForeignTenantShouldBeRejectedByGate() {

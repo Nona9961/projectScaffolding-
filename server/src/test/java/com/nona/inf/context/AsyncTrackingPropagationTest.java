@@ -32,9 +32,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * 经 {@code TenantContextAccessor.withSnapshot(snapshot, () ->
  * TrackingContext.withScope(task))} 嵌套绑定后，首次 {@code tracker()} 从基线重建
  * （{@code ChangeTracker.fromBaseline(provider.createCapability(), baseline)}——
- * 不重脱水）。红阶段为契约红：引用的 {@code ContextSnapshot.trackingBaseline()}
- * 访问器与 {@link BaselineSnapshot}（库 jar 前置）尚不存在，testCompile 失败属预期；
- * 绿阶段（装饰器升级 + 库依赖升级）落地后转绿。
+ * 不重脱水）。所需契约面（{@code ContextSnapshot.trackingBaseline()} 访问器与
+ * {@link BaselineSnapshot}）由库 jar 提供，本测试直接锁定升级后契约。
  * <p>
  * 契约验证点：
  * <ul>

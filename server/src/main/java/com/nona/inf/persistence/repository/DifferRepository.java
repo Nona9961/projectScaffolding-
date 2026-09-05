@@ -1,5 +1,6 @@
 package com.nona.inf.persistence.repository;
 
+import com.nona.annotation.ScaffoldGenerated;
 import com.nona.changeTracking.domain.model.changeset.ChangeSet;
 import com.nona.changeTracking.domain.model.tracking.ChangeTracker;
 import com.nona.inf.context.TrackingContext;
@@ -13,7 +14,6 @@ import org.springframework.data.repository.ListCrudRepository;
 
 import java.util.Objects;
 import java.util.Optional;
-import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * 支持基于diff的仓储，集成 ChangeTracker 实现变更追踪

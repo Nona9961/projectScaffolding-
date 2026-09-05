@@ -1,7 +1,7 @@
 package com.nona.inf.persistence.tenant;
 
-import com.nona.annotation.ScaffoldGenerated;
 import com.nona.ProjectApplication;
+import com.nona.annotation.ScaffoldGenerated;
 import com.nona.inf.context.TenantPrivilege;
 import com.nona.inf.context.TrackingContext;
 import com.nona.inf.persistence.repository.jpa.TestTenantNoteRepository;

@@ -1,7 +1,7 @@
 package com.nona.inf.persistence.tenant;
 
-import com.nona.annotation.ScaffoldGenerated;
 import com.nona.ProjectApplication;
+import com.nona.annotation.ScaffoldGenerated;
 import com.nona.exceptions.BusinessException;
 import com.nona.inf.context.TenantContextAccessor;
 import com.nona.inf.context.TenantPrivilege;

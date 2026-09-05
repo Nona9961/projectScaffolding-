@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * {@link TrackingContext} 场景测试：词法作用域绑定 / 懒创建 / fail-closed。
  * <p>
- * 契约验证点（红阶段以 stub 编译，运行时因实现占位而红；实现阶段落地后转绿）：
+ * 契约验证点：
  * <ul>
  *   <li>Happy：withScope 内 scope() 与 tracker() 各自幂等；未触碰追踪时提供者零调用</li>
  *   <li>Critical：未绑定作用域调用 tracker() 抛 {@link IllegalStateException}（fail-closed）</li>

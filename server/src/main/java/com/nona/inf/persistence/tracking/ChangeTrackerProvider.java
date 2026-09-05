@@ -1,13 +1,19 @@
 package com.nona.inf.persistence.tracking;
 
+import com.nona.annotation.ScaffoldGenerated;
 import com.nona.changeTracking.domain.capability.TrackingCapability;
 import com.nona.changeTracking.domain.model.tracking.ChangeTracker;
 import com.nona.changeTracking.spi.TrackingCapabilityProvider;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.*;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Objects;
+import java.util.ServiceLoader;
+import java.util.Set;
 import java.util.function.Function;
-import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * ChangeTracker 提供者
@@ -266,15 +272,26 @@ public class ChangeTrackerProvider {
     private Set<Class<?>> resolveValueTypes(ChangeTrackingProperties properties) {
         Set<Class<?>> types = new HashSet<>();
         for (String className : properties.getValueTypes()) {
-            try {
-                types.add(Class.forName(className));
-            } catch (ClassNotFoundException e) {
-                throw new IllegalStateException(
-                        String.format("Value type class '%s' not found. " +
-                                "Please check your change-tracking configuration.", className), e);
-            }
+            types.add(resolveValueType(className));
         }
         return types;
+    }
+
+    /**
+     * 按类名解析值类型；类不存在时抛出清晰的配置错误。
+     *
+     * @param className 值类型全限定类名
+     * @return 解析出的值类型类
+     * @throws IllegalStateException 配置的类不存在时抛出
+     */
+    private static Class<?> resolveValueType(String className) {
+        try {
+            return Class.forName(className);
+        } catch (ClassNotFoundException e) {
+            throw new IllegalStateException(
+                    String.format("Value type class '%s' not found. " +
+                            "Please check your change-tracking configuration.", className), e);
+        }
     }
 
     /**
@@ -354,15 +371,8 @@ public class ChangeTrackerProvider {
             IdentifierExtractorBuilder builder = new IdentifierExtractorBuilder(properties);
             this.extractors.putAll(builder.build());
             this.capabilityName = normalizeCapabilityName(properties.getCapability());
-            properties.getValueTypes().forEach(className -> {
-                try {
-                    this.valueTypes.add(Class.forName(className));
-                } catch (ClassNotFoundException e) {
-                    throw new IllegalStateException(
-                            String.format("Value type class '%s' not found. " +
-                                    "Please check your change-tracking configuration.", className), e);
-                }
-            });
+            properties.getValueTypes().forEach(className ->
+                    this.valueTypes.add(resolveValueType(className)));
             this.valuePackages.addAll(properties.getValueTypePackages());
             return this;
         }
