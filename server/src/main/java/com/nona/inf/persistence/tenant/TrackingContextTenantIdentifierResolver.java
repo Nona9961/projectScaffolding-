@@ -30,7 +30,7 @@ public class TrackingContextTenantIdentifierResolver implements CurrentTenantIde
     public static final String ROOT_TENANT_ID = TenantWriteGate.ROOT_TENANT_ID;
 
     /**
-     * 租户上下文访问器（两级优先级：请求作用域 → 线程回退）
+     * 租户上下文访问器（单级解析：跟踪作用域持有者优先 → 嵌套异步快照回退）
      */
     private final TenantContextAccessor tenantContextAccessor;
 

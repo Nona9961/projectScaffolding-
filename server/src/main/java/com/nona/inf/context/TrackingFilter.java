@@ -24,9 +24,9 @@ import java.io.IOException;
  *       池化线程复用无残留，无需手动清理</li>
  * </ol>
  * <strong>顺序</strong>：{@link Ordered#HIGHEST_PRECEDENCE}——先于消费者授权过滤器等业务
- * 过滤器绑定作用域（写入持有者的前提是运行在 {@code withScope} 内）。该数值为定稿时决策：
- * 若消费者过滤器注册顺序或 security filter chain 的编排变化，绿阶段可复核调整
- * （契约只要求「先于业务过滤器」，不锁定具体数值）。
+ * 过滤器绑定作用域（写入持有者的前提是运行在 {@code withScope} 内）。契约只要求
+ * 「先于业务过滤器」，不锁定具体数值；若消费者过滤器注册顺序或 security filter
+ * chain 的编排变化，可复核调整该数值。
  * <p>
  * fail-closed 对照：不经过本过滤器（或异步传播装饰器）绑定的线程，调用
  * {@link TrackingContext#tracker} 抛 {@link IllegalStateException}——语义由

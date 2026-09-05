@@ -27,7 +27,7 @@ projectScaffolding 属于**后端应用脚手架**领域：它不是一个业务
 | 领域概念 | 是什么 | 代码位置 |
 |---------|--------|---------|
 | DDD 分层元素 | 聚合根 / 值对象 / 工厂 / 仓储 / ACL 的约定骨架 | `server/domain/<aggregate>` → `entity`、`factory`、`repo`、`ports` |
-| 请求上下文三元组 | 租户 / 角色 / 身份，随请求贯穿业务与异步链路 | `server/inf/context` → `ThreadContext`、`TenantContextAccessor` |
+| 请求上下文三元组 | 租户 / 角色 / 身份，随请求贯穿业务与异步链路 | `server/inf/context` → `TrackingContext` / `TrackingScope`、`TenantContextAccessor` |
 | 多租户隔离 | 按租户切分数据，租户缺失不放行；跨租户访问显式放行；写门禁规则存储无关 | 规则：`common/tenant` → `TenantWriteGate`、`TenantScopeExitHandler`；JPA 实现：`server/inf/persistence/tenant` → Hibernate 配置、`TenantRepositoryAspect`、`JpaTenantScopeExitHandler`、resolver |
 | 变更追踪集成 | 仓储自动计算属性级变更并重建 PO | `server/inf/persistence/tracking`（自动配置、`ChangeTrackerProvider`）、`repository` → `DifferRepository`、`reconstructor` |
 | 模板生成标识 | 脚手架生成文件的标记 | `common/annotation` → `@ScaffoldGenerated` |
