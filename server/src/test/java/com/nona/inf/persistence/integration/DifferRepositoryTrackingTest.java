@@ -229,6 +229,38 @@ class DifferRepositoryTrackingTest {
     // ==================== Critical path ====================
 
     /**
+     * H4（多根批量 save 归属隔离）：两个已追踪根均修改后逐个 save——
+     * save(root1) 只应用 root1 的变更（其他根的变更不得写入 root1 行），
+     * 后续 save(root2) 只应用 root2 的变更（多根场景无交叉污染）。
+     */
+    @Test
+    void multiRootSaveShouldOnlyPersistOwnRootChanges() {
+        insertOrderRow();
+        jdbc.update("""
+                INSERT INTO t_order (id, order_no, status, tenant_id)
+                VALUES (?, ?, ?, ?)
+                """, 2L, "ORD-002", "PENDING", "test-tenant");
+
+        TrackingContext.withScope(() -> {
+            FullIntegrationTest.Order order1 = orderRepository.getByID(1L);
+            FullIntegrationTest.Order order2 = orderRepository.getByID(2L);
+            order1.setStatus("PAID");
+            order2.setStatus("SHIPPED");
+
+            boolean saved1 = orderRepository.save(order1);
+            assertThat(saved1).isTrue();
+            // root1 的变更已落库；root2 的同名字段变更不得污染 root1 行
+            assertThat(jdbc.queryForObject("SELECT status FROM t_order WHERE id = 1", String.class))
+                    .isEqualTo("PAID");
+
+            boolean saved2 = orderRepository.save(order2);
+            assertThat(saved2).isTrue();
+            assertThat(jdbc.queryForObject("SELECT status FROM t_order WHERE id = 2", String.class))
+                    .isEqualTo("SHIPPED");
+        });
+    }
+
+    /**
      * C1（fail-closed 读）：未绑定作用域调用 getByID → 抛 {@link IllegalStateException}
      * （入口组件缺失），不静默降级。
      */
