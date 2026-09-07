@@ -25,7 +25,7 @@ import java.util.List;
  * @author nona9961
  */
 @ScaffoldGenerated
-class TenantAccessorSingleLevelTest {
+class TenantAccessorSingleLevelUnitTest {
 
     /**
      * 被测访问器：单级化后无参构造（字段删除，默认无参）；本测试始终不激活 request

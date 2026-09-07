@@ -12,7 +12,7 @@ import com.nona.annotation.ScaffoldGenerated;
  * IdentifierExtractorBuilder 单元测试
  */
 @ScaffoldGenerated
-class IdentifierExtractorBuilderTest {
+class IdentifierExtractorBuilderUnitTest {
 
     // ========== 测试用类 ==========
 

@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * @author nona9961
  */
-class TenantWriteGateTest {
+class TenantWriteGateUnitTest {
 
     // ---- 提权分支（elevated = true）----
 

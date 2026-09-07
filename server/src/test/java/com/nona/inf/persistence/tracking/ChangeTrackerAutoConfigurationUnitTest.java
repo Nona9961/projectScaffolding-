@@ -9,7 +9,7 @@ import com.nona.annotation.ScaffoldGenerated;
  * ChangeTracker自动配置测试
  */
 @ScaffoldGenerated
-class ChangeTrackerAutoConfigurationTest {
+class ChangeTrackerAutoConfigurationUnitTest {
 
     /**
      * 场景1：用户未定义Bean时自动创建

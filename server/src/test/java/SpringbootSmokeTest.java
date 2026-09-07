@@ -8,5 +8,5 @@ import com.nona.annotation.ScaffoldGenerated;
  */
 @SpringBootTest(classes = ProjectApplication.class)
 @ScaffoldGenerated
-public class SpringbootTest {
+public class SpringbootSmokeTest {
 }

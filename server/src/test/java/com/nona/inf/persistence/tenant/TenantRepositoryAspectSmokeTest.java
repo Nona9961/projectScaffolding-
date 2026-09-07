@@ -35,7 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  */
 @SpringBootTest(classes = ProjectApplication.class)
 @ScaffoldGenerated
-class TenantRepositoryAspectTest {
+class TenantRepositoryAspectSmokeTest {
 
     @Autowired
     private TestTenantNoteRepository tenantNoteRepository;
@@ -463,7 +463,7 @@ class TenantRepositoryAspectTest {
      * <p>
      * 旧语义为「注入当前 tenant」（admin 普通创建场景）；后经架构审查判定为契约级错误：
      * 「谁做的」是 identity 职责，非租户职责——提权 + 空归属写必须显式报错，而非发明归属。
-     * 对应 common 单测 {@code TenantWriteGateTest#elevatedWithNullTenantShouldReject}。
+     * 对应 common 单测 {@code TenantWriteGateUnitTest#elevatedWithNullTenantShouldReject}。
      */
     @Test
     void elevatedWriteWithNullTenantShouldFail() {
@@ -890,7 +890,7 @@ class TenantRepositoryAspectTest {
 
     /**
      * 验证提权 + 空白归属 → 拒绝（空白归一为空归属后拒绝，见
-     * {@code TenantWriteGateTest#elevatedWithBlankTenantShouldReject}）。
+     * {@code TenantWriteGateUnitTest#elevatedWithBlankTenantShouldReject}）。
      * {@code saveNoteForTenant} 可传入任意字符串，故以 "   " 形态直探门禁。
      */
     @Test

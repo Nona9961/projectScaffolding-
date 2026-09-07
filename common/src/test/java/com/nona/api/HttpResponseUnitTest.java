@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * @author nona9961
  */
-class HttpResponseTest {
+class HttpResponseUnitTest {
 
     // ---- Happy path ----
 

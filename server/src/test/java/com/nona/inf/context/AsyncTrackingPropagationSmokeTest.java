@@ -49,7 +49,7 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 @SpringBootTest(classes = ProjectApplication.class)
 @ScaffoldGenerated
-class AsyncTrackingPropagationTest {
+class AsyncTrackingPropagationSmokeTest {
 
     @Autowired
     private TenantContextAccessor tenantContextAccessor;

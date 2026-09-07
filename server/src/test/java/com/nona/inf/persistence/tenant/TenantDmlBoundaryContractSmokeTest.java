@@ -40,7 +40,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 @SpringBootTest(classes = ProjectApplication.class)
 @ScaffoldGenerated
-class TenantDmlBoundaryContractTest {
+class TenantDmlBoundaryContractSmokeTest {
 
     @Autowired
     private TestTenantNoteRepository tenantNoteRepository;

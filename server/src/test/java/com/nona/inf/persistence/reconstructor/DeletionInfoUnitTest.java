@@ -12,7 +12,7 @@ import com.nona.annotation.ScaffoldGenerated;
  */
 @DisplayName("DeletionInfo 测试")
 @ScaffoldGenerated
-class DeletionInfoTest {
+class DeletionInfoUnitTest {
 
     static class TestPO {
         private Long id;

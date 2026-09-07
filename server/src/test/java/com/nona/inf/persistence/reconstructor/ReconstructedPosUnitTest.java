@@ -13,7 +13,7 @@ import com.nona.annotation.ScaffoldGenerated;
  */
 @DisplayName("ReconstructedPos 测试")
 @ScaffoldGenerated
-class ReconstructedPosTest {
+class ReconstructedPosUnitTest {
 
     static class OrderPO {
         private Long id;

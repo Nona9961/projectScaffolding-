@@ -27,7 +27,7 @@ import com.nona.annotation.ScaffoldGenerated;
  */
 @DisplayName("PoReconstructor 测试")
 @ScaffoldGenerated
-class PoReconstructorTest {
+class PoReconstructorUnitTest {
 
     // ========== 测试用类 ==========
 
