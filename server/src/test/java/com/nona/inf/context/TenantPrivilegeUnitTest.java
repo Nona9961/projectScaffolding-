@@ -28,7 +28,7 @@ import static org.mockito.Mockito.when;
  * @author nona9961
  */
 @ScaffoldGenerated
-class TenantPrivilegeTest {
+class TenantPrivilegeUnitTest {
 
     /**
      * 被测对象 fixture：空 handler 列表 + 无访问器（纯单测环境，退出通知 no-op、日志身份 unknown）。

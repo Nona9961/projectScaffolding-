@@ -53,7 +53,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * @author nona9961
  */
 @ScaffoldGenerated
-class DifferRepositoryTrackingTest {
+class DifferRepositoryTrackingUnitTest {
 
     private JdbcTemplate jdbc;
     private OrderRepository orderRepository;
@@ -130,27 +130,27 @@ class DifferRepositoryTrackingTest {
 
         // 转换器注册（复用一体化测试的转换器实现）
         ConverterRegistry registry = new ConverterRegistry();
-        registry.register(new FullIntegrationTest.OrderItemConverter());
-        registry.register(new FullIntegrationTest.CustomerConverter());
-        registry.register(new FullIntegrationTest.OrderConverter());
+        registry.register(new FullIntegrationUnitTest.OrderItemConverter());
+        registry.register(new FullIntegrationUnitTest.CustomerConverter());
+        registry.register(new FullIntegrationUnitTest.OrderConverter());
 
         // ChangeTracker 提供者（与一体化测试同一配置）
         ChangeTrackerProvider changeTrackerProvider = ChangeTrackerProvider.builder()
-                .withIdentifier(FullIntegrationTest.OrderItem.class, FullIntegrationTest.OrderItem::getId)
-                .withIdentifier(FullIntegrationTest.SubItem.class, FullIntegrationTest.SubItem::getId)
-                .withIdentifier(FullIntegrationTest.Spec.class, FullIntegrationTest.Spec::getKey)
-                .withIdentifier(FullIntegrationTest.Customer.class, FullIntegrationTest.Customer::getId)
-                .withIdentifier(FullIntegrationTest.Address.class, FullIntegrationTest.Address::getId)
-                .withValueType(FullIntegrationTest.Money.class)
-                .withValueType(FullIntegrationTest.ContactInfo.class)
+                .withIdentifier(FullIntegrationUnitTest.OrderItem.class, FullIntegrationUnitTest.OrderItem::getId)
+                .withIdentifier(FullIntegrationUnitTest.SubItem.class, FullIntegrationUnitTest.SubItem::getId)
+                .withIdentifier(FullIntegrationUnitTest.Spec.class, FullIntegrationUnitTest.Spec::getKey)
+                .withIdentifier(FullIntegrationUnitTest.Customer.class, FullIntegrationUnitTest.Customer::getId)
+                .withIdentifier(FullIntegrationUnitTest.Address.class, FullIntegrationUnitTest.Address::getId)
+                .withValueType(FullIntegrationUnitTest.Money.class)
+                .withValueType(FullIntegrationUnitTest.ContactInfo.class)
                 .build();
 
         // 仓储构造器：DifferRepository 已收敛为 3 参（repository / convertor / changeTrackerProvider），
         // 不再持有请求级上下文实例——追踪器与快照登记全部经 TrackingContext 作用域持有者。
-        ListCrudRepository<FullIntegrationTest.OrderPO, Long> crudRepo =
-                new FullIntegrationTest.InMemoryOrderPORepository(jdbc, new FullIntegrationTest.OrderConverter());
+        ListCrudRepository<FullIntegrationUnitTest.OrderPO, Long> crudRepo =
+                new FullIntegrationUnitTest.InMemoryOrderPORepository(jdbc, new FullIntegrationUnitTest.OrderConverter());
         orderRepository = new OrderRepository(
-                crudRepo, new FullIntegrationTest.OrderConverter(),
+                crudRepo, new FullIntegrationUnitTest.OrderConverter(),
                 changeTrackerProvider, jdbc, registry);
     }
 
@@ -175,7 +175,7 @@ class DifferRepositoryTrackingTest {
         insertOrderRow();
 
         TrackingContext.withScope(() -> {
-            FullIntegrationTest.Order loaded = orderRepository.getByID(1L);
+            FullIntegrationUnitTest.Order loaded = orderRepository.getByID(1L);
             assertThat(loaded).isNotNull();
 
             TrackingScope scope = TrackingContext.scope();
@@ -194,7 +194,7 @@ class DifferRepositoryTrackingTest {
         insertOrderRow();
 
         TrackingContext.withScope(() -> {
-            FullIntegrationTest.Order loaded = orderRepository.getByID(1L);
+            FullIntegrationUnitTest.Order loaded = orderRepository.getByID(1L);
             loaded.setStatus("PAID");
 
             boolean saved = orderRepository.save(loaded);
@@ -215,7 +215,7 @@ class DifferRepositoryTrackingTest {
     @Test
     void saveNewRootShouldGoInsertPathAndRegisterScopeSnapshot() {
         TrackingContext.withScope(() -> {
-            FullIntegrationTest.Order order = new FullIntegrationTest.Order(2L, "ORD-002");
+            FullIntegrationUnitTest.Order order = new FullIntegrationUnitTest.Order(2L, "ORD-002");
             order.setStatus("PENDING");
 
             boolean saved = orderRepository.save(order);
@@ -242,8 +242,8 @@ class DifferRepositoryTrackingTest {
                 """, 2L, "ORD-002", "PENDING", "test-tenant");
 
         TrackingContext.withScope(() -> {
-            FullIntegrationTest.Order order1 = orderRepository.getByID(1L);
-            FullIntegrationTest.Order order2 = orderRepository.getByID(2L);
+            FullIntegrationUnitTest.Order order1 = orderRepository.getByID(1L);
+            FullIntegrationUnitTest.Order order2 = orderRepository.getByID(2L);
             order1.setStatus("PAID");
             order2.setStatus("SHIPPED");
 
@@ -278,7 +278,7 @@ class DifferRepositoryTrackingTest {
      */
     @Test
     void unboundSaveShouldFailClosed() {
-        FullIntegrationTest.Order order = new FullIntegrationTest.Order(3L, "ORD-003");
+        FullIntegrationUnitTest.Order order = new FullIntegrationUnitTest.Order(3L, "ORD-003");
         order.setStatus("PENDING");
 
         assertThatThrownBy(() -> orderRepository.save(order))
@@ -300,7 +300,7 @@ class DifferRepositoryTrackingTest {
         ExecutorService pool = Executors.newSingleThreadExecutor();
         try {
             TrackingContext.withScope(() -> {
-                FullIntegrationTest.Order loaded = orderRepository.getByID(1L);
+                FullIntegrationUnitTest.Order loaded = orderRepository.getByID(1L);
                 loaded.setStatus("PAID");
 
                 AtomicReference<Boolean> workerSaved = new AtomicReference<>();
@@ -343,7 +343,7 @@ class DifferRepositoryTrackingTest {
      */
     @Test
     void scopeExitShouldDropSnapshotRegistrySoSecondSaveGoesInsert() {
-        FullIntegrationTest.Order order = new FullIntegrationTest.Order(4L, "ORD-004");
+        FullIntegrationUnitTest.Order order = new FullIntegrationUnitTest.Order(4L, "ORD-004");
         order.setStatus("PENDING");
 
         TrackingContext.withScope(() -> {

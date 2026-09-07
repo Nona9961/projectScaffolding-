@@ -12,7 +12,7 @@ import com.nona.annotation.ScaffoldGenerated;
  * ChangeTrackerProvider 单元测试
  */
 @ScaffoldGenerated
-class ChangeTrackerProviderTest {
+class ChangeTrackerProviderUnitTest {
 
     // ========== 测试用类 ==========
 

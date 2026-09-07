@@ -65,7 +65,7 @@ import com.nona.annotation.ScaffoldGenerated;
  * @see OrderRepository
  */
 @ScaffoldGenerated
-class FullIntegrationTest {
+class FullIntegrationUnitTest {
 
     private JdbcTemplate jdbc;
     private ConverterRegistry registry;
@@ -592,7 +592,7 @@ class FullIntegrationTest {
 
     @Nested
     @DisplayName("ConverterRegistry 测试")
-    class ConverterRegistryTest {
+    class ConverterRegistryUnitTest {
 
         @Test
         @DisplayName("注册并获取简单转换器")
@@ -640,7 +640,7 @@ class FullIntegrationTest {
 
     @Nested
     @DisplayName("ChangeTrackerProvider 测试")
-    class ChangeTrackerProviderTest {
+    class ChangeTrackerProviderUnitTest {
 
         @Test
         @DisplayName("创建 ChangeTracker 实例")

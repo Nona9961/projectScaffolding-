@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
  *
  * @author nona9961
  */
-class BusinessCodeTest {
+class BusinessCodeUnitTest {
 
     // ---- Happy path ----
 

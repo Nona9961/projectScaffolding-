@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  *
  * @author nona9961
  */
-class BusinessAssertTest {
+class BusinessAssertUnitTest {
 
     // ---- Happy path ----
 

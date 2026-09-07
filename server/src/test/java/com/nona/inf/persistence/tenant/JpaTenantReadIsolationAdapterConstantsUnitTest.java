@@ -23,7 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @author nona9961
  */
 @ScaffoldGenerated
-class JpaTenantReadIsolationAdapterConstantsTest {
+class JpaTenantReadIsolationAdapterConstantsUnitTest {
 
     /**
      * Hibernate 内部类全限定名。拼接书写规避 internal 包整串字面残留（见类 Javadoc 刻意说明）。

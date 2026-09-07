@@ -25,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * @author nona9961
  */
 @ScaffoldGenerated
-class TrackingContextTest {
+class TrackingContextUnitTest {
 
     // ========== Happy path ==========
 

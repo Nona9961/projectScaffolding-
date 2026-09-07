@@ -20,7 +20,7 @@ import com.nona.annotation.ScaffoldGenerated;
  * @author nona
  */
 @ScaffoldGenerated
-class JacksonUtilJavaTimeTest {
+class JacksonUtilJavaTimeUnitTest {
 
     /** Fixed epoch millis representing 2025-06-13T00:00:00Z for deterministic test values. */
     private static final long EPOCH_MILLIS = 1718236800000L;

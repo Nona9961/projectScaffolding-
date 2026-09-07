@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * @author nona9961
  */
-class BusinessExceptionTest {
+class BusinessExceptionUnitTest {
 
     // ---- Happy path ----
 

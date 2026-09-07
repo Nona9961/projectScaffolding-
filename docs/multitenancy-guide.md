@@ -140,7 +140,7 @@ public void createCrossShopOrder() throws Exception {
 
 无事务的短命查询（每次 repository 调用各开一个 session）同样覆盖：只要调用发生在作用域内，
 新 session 打开时 resolver 即可自查到读放行状态（第一重保险）。证例见
-`server/src/test/java/com/nona/inf/persistence/tenant/TenantRepositoryAspectTest.java`
+`server/src/test/java/com/nona/inf/persistence/tenant/TenantRepositoryAspectSmokeTest.java`
 的 `elevatedScopeShouldExposeAllTenantsInsideAndRestoreIsolationAfterExit` 与
 `sameTransactionElevatedScopeShouldExposeAllTenantsAndRestoreAfterExit`。
 
@@ -234,8 +234,8 @@ tenantPrivilege.elevated(() -> {
 ```
 
 提权不是免检通道：**每一行数据的归属都必须显式写在实体上**。判定矩阵全表见
-`common/src/test/java/com/nona/tenant/TenantWriteGateTest.java`（14 条纯函数单测）与
-`TenantRepositoryAspectTest`（`crossTenantWrite*` 系列 + `elevatedWriteWithNullTenantShouldFail` /
+`common/src/test/java/com/nona/tenant/TenantWriteGateUnitTest.java`（14 条纯函数单测）与
+`TenantRepositoryAspectSmokeTest`（`crossTenantWrite*` 系列 + `elevatedWriteWithNullTenantShouldFail` /
 `elevatedWriteWithBlankTenantShouldFail` 集成证例）。
 
 ### 3.4 flush 落库值
@@ -254,7 +254,7 @@ insert 时 Hibernate 写侧校验（`@TenantId` assigned-id）与门禁对齐：
 |---|------|------|------|
 | H1 | session 定型 | session 打开时定型的租户是 Hibernate 写侧校验基准，事务内不可更改；已定型 session 内提权写异租户 flush 抛 `PropertyValueException` | `elevatedInTransaction` 为等效形态（先提权再开事务，§2.3）——Hibernate 固有行为，非缺陷 |
 | H2 | filter 粗粒度 | 注解/提权放行是整条关闭 `_tenantId` filter——**读 + 删共用一条防线**，无细粒度控制 | 写侧已由参数判定补齐（R2）；删除随 filter 为语义本然（H3） |
-| H3 | filter 对 bulk DML 生效 | 无参形态 `deleteAllInBatch()` / `deleteAll()` 受 filter 保护，异租户行删不掉（实验 D 转正：`TenantDmlBoundaryContractTest#contractD2_noArgDeleteAllInBatchShouldBeFilteredToCurrentTenant`） | 依赖 Hibernate 版本行为，升级回归必查 |
+| H3 | filter 对 bulk DML 生效 | 无参形态 `deleteAllInBatch()` / `deleteAll()` 受 filter 保护，异租户行删不掉（实验 D 转正：`TenantDmlBoundaryContractSmokeTest#contractD2_noArgDeleteAllInBatchShouldBeFilteredToCurrentTenant`） | 依赖 Hibernate 版本行为，升级回归必查 |
 
 **`elevatedInTransaction` 的作用域退出 handler 空转属预期**：其退出晚于事务提交
 （EntityManager 已解绑），`JpaTenantScopeExitHandler` 查 `hasResource` 恒 false 直接返回——
@@ -327,9 +327,9 @@ C 端跨店下单是典型形态：买家上下文**没有租户**，一次订�
 ### 4.4 边界行为
 
 - 出作用域自动恢复，异常透传且照样解绑
-  （`TenantPrivilegeTest#callableExceptionPassesThroughAndUnbinds`）；
+  （`TenantPrivilegeUnitTest#callableExceptionPassesThroughAndUnbinds`）；
 - 嵌套作用域逐层恢复
-  （`TenantPrivilegeTest#nestedScopesRestoreLayerByLayer`）；
+  （`TenantPrivilegeUnitTest#nestedScopesRestoreLayerByLayer`）；
 - 作用域内**无法**篡改绑定值（ScopedValue 语义），不存在「忘了退出」的状态污染。
 
 ### 4.5 @CrossTenant：注解读放行（只关读）
@@ -413,7 +413,7 @@ Hibernate 写侧校验（`@TenantId` assigned-id）保留实体显式 `tenantID`
 
 **④ 红线：注解内读到的实体仅供读取（F 实证）**：`@CrossTenant` 作用域内 load 出的异租户实体
 （`findById` / `findAll` 结果）**不是写入口**——绕过写门禁修改其业务字段并 flush（或依赖
-作用域退出 auto-flush）会把跨租户篡改落库（实证：`TenantDmlBoundaryContractTest#contractF_annotatedReadThenMutateBusinessFieldThenFlush`）。
+作用域退出 auto-flush）会把跨租户篡改落库（实证：`TenantDmlBoundaryContractSmokeTest#contractF_annotatedReadThenMutateBusinessFieldThenFlush`）。
 框架只承诺 repository 层写入口的门禁与隔离；`EntityManager` 直用 / `JdbcTemplate` / 手动
 `flush()` 直改均不在承诺范围。绕过写入口时归属由存储层兜底（写侧校验或显式
 租户值保留），**污染自负**。正确姿势：注解内读到的实体仅用于只读计算；要写，把实体归属显式
@@ -459,7 +459,7 @@ executor.setTaskDecorator(new RequestContextPropagatingTaskDecorator(tenantConte
 
 ScopedValue 默认不跨线程。父线程正在提权或 `@CrossTenant` 读放行时提交的异步任务，
 worker 内 `TenantPrivilege.isActive()` 与 `isReadBypassActive()` 均为 `false`
-（`TenantPrivilegeTest#elevationDoesNotLeakIntoNewThread`、
+（`TenantPrivilegeUnitTest#elevationDoesNotLeakIntoNewThread`、
 `readBypassDoesNotLeakIntoNewThread`）。
 worker 内需要跨租户能力时必须在任务体内**显式声明**：
 

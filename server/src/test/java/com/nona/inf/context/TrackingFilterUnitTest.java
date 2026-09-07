@@ -28,13 +28,13 @@ import java.util.concurrent.atomic.AtomicReference;
  *       且经提供者懒创建 tracker 可用）</li>
  *   <li>Fail：链路异常时异常原样传播、作用域退出恢复 unbound（池化线程复用无残留）</li>
  *   <li>Critical：请求不经本过滤器时线程无绑定——「Filter 包裹生效」的对照侧；
- *       fail-closed 完整语义（未绑定调用 tracker() 抛异常）由 {@link TrackingContextTest} 覆盖</li>
+ *       fail-closed 完整语义（未绑定调用 tracker() 抛异常）由 {@link TrackingContextUnitTest} 覆盖</li>
  * </ul>
  *
  * @author nona9961
  */
 @ScaffoldGenerated
-class TrackingFilterTest {
+class TrackingFilterUnitTest {
 
     private static final ChangeTrackerProvider PROVIDER = new ChangeTrackerProvider(Map.of(), Set.of(), Set.of());
 
@@ -59,7 +59,7 @@ class TrackingFilterTest {
 
     /**
      * 过滤链作用域完整可用：链内 {@code TrackingContext.tracker(provider)} 懒创建返回
-     * 非 null 追踪器（非 DB 请求不触碰本调用则零创建，懒语义由 TrackingContextTest 覆盖）。
+     * 非 null 追踪器（非 DB 请求不触碰本调用则零创建，懒语义由 TrackingContextUnitTest 覆盖）。
      */
     @Test
     void shouldExposeWorkingTrackerInsideFilterScope() throws ServletException, IOException {
@@ -77,7 +77,7 @@ class TrackingFilterTest {
 
     /**
      * 请求不经本过滤器（链路闭包直接执行）时线程无绑定——Filter 包裹生效的对照断言；
-     * 未绑定场景调用 tracker() 的 fail-closed 异常语义由 {@link TrackingContextTest}
+     * 未绑定场景调用 tracker() 的 fail-closed 异常语义由 {@link TrackingContextUnitTest}
      * {@code shouldFailClosedWhenTrackerCalledWithoutBoundScope} 覆盖。
      * <p>
      * 本用例锁定「Filter 必须包裹链路」这一契约正向面：请求绕过过滤器（链路闭包直接

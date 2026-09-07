@@ -15,7 +15,7 @@ import com.nona.annotation.ScaffoldGenerated;
  * ConverterRegistry 单元测试
  */
 @ScaffoldGenerated
-class ConverterRegistryTest {
+class ConverterRegistryUnitTest {
 
     private ConverterRegistry registry;
 

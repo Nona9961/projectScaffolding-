@@ -9,7 +9,7 @@ import com.nona.annotation.ScaffoldGenerated;
  * ChangeTrackingProperties 单元测试
  */
 @ScaffoldGenerated
-class ChangeTrackingPropertiesTest {
+class ChangeTrackingPropertiesUnitTest {
 
     @Test
     void shouldHaveDefaultValues() {
