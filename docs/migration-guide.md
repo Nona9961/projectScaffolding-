@@ -28,15 +28,15 @@ rename / drop / 类型变更**不得一步到位**，拆为两个迁移脚本、
 
 已有表且无版本表的库（如从旧项目接管的库）：
 
-1. 开启 `spring.flyway.baseline-on-migrate`（或首次迁移前手动 `baseline`）
-2. V1 = 现有结构 dump（`mysqldump` 或 Hibernate schema-generation 生成后人工修正索引/约束）
+1. 开启 `spring.flyway.baseline-on-migrate`（或首次迁移前手动 `baseline`）：现有库结构由 baseline 标记承接，模板自带 `V1__baseline.sql` 被跳过、不执行
+2. 现有结构 dump（`mysqldump` 或 Hibernate schema-generation，人工修正索引/约束）仅作 baseline 结构参考，不落为迁移脚本
 3. 之后所有变更按规范走版本迁移
 
 ## 环境策略
 
 | 环境 | 数据库 | 行为 |
 |------|--------|------|
-| dev / test | H2 内存 | 每次启动空库全量重放全部迁移 = 天然的可重放性验证（内存库销毁即重放，无需 clean；且 `clean-disabled` 模板默认常开） |
+| dev | H2 内存 | 每次启动空库全量重放全部迁移 = 天然的可重放性验证（内存库销毁即重放，无需 clean；且 `clean-disabled` 模板默认常开） |
 | prod | 派生项目自选（MySQL / PostgreSQL） | 增量迁移；`clean-disabled` 常开 |
 
 - 方言模块：MySQL 用 `flyway-mysql`，PostgreSQL 换 `flyway-database-postgresql`（模板默认携带前者）
@@ -44,7 +44,7 @@ rename / drop / 类型变更**不得一步到位**，拆为两个迁移脚本、
 
 ## 多租户 / 多库预案
 
-- **同构多库**（分库 / 每租户一库）：Flyway 官方循环迁移模式——对每个目标库调用 migrate（切换 `flyway.schemas` / url），所有库执行同一批脚本
+- **同构多库**（分库 / 每租户一库）：循环迁移模式——对每个目标库调用 migrate（切换 `flyway.schemas` / url），所有库执行同一批脚本
 - **异构并跑**（如 MySQL 主库 + PostgreSQL 镜像读库）：双 Flyway 实例各管各的迁移目录与版本表，两库结构不同源，各自版本化
 
 ## 测试
