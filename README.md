@@ -15,7 +15,7 @@
 
 ## 亮点
 
-- **DDD 分层骨架开箱即用**：聚合根 / 值对象 / 工厂 / 仓储 / ACL 分层约定固化，读写分离的实用主义调整
+- **DDD 分层骨架开箱即用**：聚合根 / 值对象 / 工厂 / 仓储 / ACL 分层约定固化
 - **变更追踪持久化**：集成 changeTracking，仓储层自动完成属性级变更计算与 PO 重建，业务侧只写差异逻辑
 - **多租户隔离默认安全**：fail-closed 设计（租户缺失不放行数据），跨租户访问需显式受控放行
 - **异步上下文不丢失**：线程池中租户 / 角色 / 身份上下文自动传播，异步场景租户隔离依旧有效
@@ -25,12 +25,8 @@
 
 ## 多租户
 
-tenant-scoped 数据基于 Hibernate `@TenantId` 自动读写隔离；写入门禁是 common 层的纯函数判定
-（`TenantWriteGate`：提权状态 × 实体归属两条件，覆盖所有带实体的写操作，与操作方法名无关；
-ID/无参删除由 filter 兜底）。提权/读放行作用域退出时自动 `flush()+clear()`（`TenantScopeExitHandler`
-SPI），保证数据层缓存与当前视角一致。跨租户**写**必须 `TenantPrivilege` 提权（提权下实体须显式
-归属）；跨租户**读**可用 `@CrossTenant`（只关读过滤）或提权。fail-closed：上下文租户缺失时不放行
-任何 tenant-scoped 数据——查询返回空集、写入直接拒绝。
+租户隔离默认 fail-closed：上下文租户缺失不放行数据，跨租户访问需显式受控放行；
+异步线程池中租户 / 角色 / 身份上下文自动传播。
 
 详细用法见[多租户使用手册](docs/multitenancy-guide.md)。
 
@@ -75,9 +71,8 @@ mvn spring-boot:run -pl server
 | Java | 25 | 虚拟线程 |
 | Spring Boot | 4.1.0 | 应用框架 |
 | Spring Data JPA | Spring Boot BOM 管理 | ORM |
+| Flyway | Spring Boot BOM 管理 | DDL 版本化管理（schema 迁移 + 一致性校验） |
 | Log4j2 | 2.26.1 | 异步日志 |
-
-> 关键约定（标识符配置、租户规则、变更追踪配置等）见内部规范文档，不再于此重复。
 
 ## 许可证
 
