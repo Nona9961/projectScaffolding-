@@ -14,6 +14,7 @@ import com.nona.inf.persistence.tracking.ChangeTrackerProvider;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.core.task.TaskDecorator;
 
 import java.util.List;
@@ -48,6 +49,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * @author nona9961
  */
 @SpringBootTest(classes = ProjectApplication.class)
+@ActiveProfiles("test")
 @ScaffoldGenerated
 class AsyncTrackingPropagationSmokeTest {
 

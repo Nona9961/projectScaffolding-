@@ -8,6 +8,12 @@ spring:
   jpa:
     # OSV 必须关闭：session 打开时一次性定型租户模式，打开时机必须可控
     open-in-view: false
+  flyway:
+    # DDL 版本化管理：Flyway 负责 schema 演进，Hibernate ddl-auto: validate 负责一致性校验
+    enabled: true
+    locations: classpath:db/migration
+    # 常开：防止 clean 误删整库（派生产品环境同样继承）
+    clean-disabled: true
 
 logging:
   config: classpath:log_config.xml

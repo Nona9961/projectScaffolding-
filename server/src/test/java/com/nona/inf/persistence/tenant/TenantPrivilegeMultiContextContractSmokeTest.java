@@ -9,6 +9,7 @@ import com.nona.tenant.TenantScopeExitHandler;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
@@ -127,6 +128,7 @@ abstract class TenantPrivilegeMultiContextContractSmokeTest {
  * Context A（probe=A）：验证收集隔离、通知隔离与租户缓存契约。
  */
 @SpringBootTest(classes = ProjectApplication.class, properties = "tenant.multi-context.probe=A")
+@ActiveProfiles("test")
 @Import(TenantPrivilegeMultiContextContractASmokeTest.ProbeAConfiguration.class)
 @ScaffoldGenerated
 class TenantPrivilegeMultiContextContractASmokeTest {
@@ -217,6 +219,7 @@ class TenantPrivilegeMultiContextContractASmokeTest {
  * Context B（probe=B）：与 A 对称——证明两 context 并存时互不覆盖、互不通知。
  */
 @SpringBootTest(classes = ProjectApplication.class, properties = "tenant.multi-context.probe=B")
+@ActiveProfiles("test")
 @Import(TenantPrivilegeMultiContextContractBSmokeTest.ProbeBConfiguration.class)
 @ScaffoldGenerated
 class TenantPrivilegeMultiContextContractBSmokeTest {

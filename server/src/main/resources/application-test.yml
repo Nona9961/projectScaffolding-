@@ -1,0 +1,8 @@
+spring:
+  jpa:
+    hibernate:
+      # 测试域内 schema 由 Hibernate 管理（与引入 Flyway 前语义一致），与迁移机制解耦
+      ddl-auto: create-drop
+  flyway:
+    # 测试不承担迁移验证；需要 CI 验证迁移可重放性的派生项目按需开启（见 docs/migration-guide.md）
+    enabled: false

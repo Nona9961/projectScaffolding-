@@ -75,6 +75,7 @@ mvn spring-boot:run -pl server
 | Java | 25 | 虚拟线程 |
 | Spring Boot | 4.1.0 | 应用框架 |
 | Spring Data JPA | Spring Boot BOM 管理 | ORM |
+| Flyway | Spring Boot BOM 管理 | DDL 版本化管理（schema 迁移 + 一致性校验） |
 | Log4j2 | 2.26.1 | 异步日志 |
 
 > 关键约定（标识符配置、租户规则、变更追踪配置等）见内部规范文档，不再于此重复。
