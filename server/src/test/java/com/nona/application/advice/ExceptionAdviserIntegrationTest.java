@@ -47,7 +47,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @ActiveProfiles("test")
 @AutoConfigureMockMvc(addFilters = false)
-class ExceptionAdviserSmokeTest {
+class ExceptionAdviserIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;

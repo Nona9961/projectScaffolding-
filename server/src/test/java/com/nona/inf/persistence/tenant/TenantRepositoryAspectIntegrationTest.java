@@ -37,7 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 @SpringBootTest(classes = ProjectApplication.class)
 @ActiveProfiles("test")
 @ScaffoldGenerated
-class TenantRepositoryAspectSmokeTest {
+class TenantRepositoryAspectIntegrationTest {
 
     @Autowired
     private TestTenantNoteRepository tenantNoteRepository;

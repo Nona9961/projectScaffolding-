@@ -46,7 +46,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @author nona9961
  */
 @ScaffoldGenerated
-abstract class TenantPrivilegeMultiContextContractSmokeTest {
+abstract class TenantPrivilegeMultiContextContractIntegrationTest {
 
     static final ConcurrentMap<String, AtomicInteger> HANDLER_CALLS = new ConcurrentHashMap<>();
     static final ConcurrentMap<String, TenantPrivilege> SEEN_PRIVILEGES = new ConcurrentHashMap<>();
@@ -119,7 +119,7 @@ abstract class TenantPrivilegeMultiContextContractSmokeTest {
         });
     }
 
-    private TenantPrivilegeMultiContextContractSmokeTest() {
+    private TenantPrivilegeMultiContextContractIntegrationTest() {
         // 工具基类，不实例化
     }
 }
@@ -129,16 +129,16 @@ abstract class TenantPrivilegeMultiContextContractSmokeTest {
  */
 @SpringBootTest(classes = ProjectApplication.class, properties = "tenant.multi-context.probe=A")
 @ActiveProfiles("test")
-@Import(TenantPrivilegeMultiContextContractASmokeTest.ProbeAConfiguration.class)
+@Import(TenantPrivilegeMultiContextContractAIntegrationTest.ProbeAConfiguration.class)
 @ScaffoldGenerated
-class TenantPrivilegeMultiContextContractASmokeTest {
+class TenantPrivilegeMultiContextContractAIntegrationTest {
 
     @TestConfiguration
     static class ProbeAConfiguration {
 
         @Bean
         TenantScopeExitHandler recordingScopeExitHandlerA() {
-            return new TenantPrivilegeMultiContextContractSmokeTest.RecordingScopeExitHandler("A");
+            return new TenantPrivilegeMultiContextContractIntegrationTest.RecordingScopeExitHandler("A");
         }
     }
 
@@ -163,22 +163,22 @@ class TenantPrivilegeMultiContextContractASmokeTest {
                 .as("context A must collect its own JpaTenantScopeExitHandler + probe handler")
                 .hasSize(2)
                 .anyMatch(h -> h instanceof JpaTenantScopeExitHandler)
-                .anyMatch(h -> h instanceof TenantPrivilegeMultiContextContractSmokeTest.RecordingScopeExitHandler r
+                .anyMatch(h -> h instanceof TenantPrivilegeMultiContextContractIntegrationTest.RecordingScopeExitHandler r
                         && "A".equals(r.contextTag()));
         assertThat(scopeExitHandlers)
                 .as("context A must NOT collect context B's probe handler")
-                .noneMatch(h -> h instanceof TenantPrivilegeMultiContextContractSmokeTest.RecordingScopeExitHandler r
+                .noneMatch(h -> h instanceof TenantPrivilegeMultiContextContractIntegrationTest.RecordingScopeExitHandler r
                         && "B".equals(r.contextTag()));
-        TenantPrivilegeMultiContextContractSmokeTest.assertDistinctPrivilegeInstances("A", tenantPrivilege);
+        TenantPrivilegeMultiContextContractIntegrationTest.assertDistinctPrivilegeInstances("A", tenantPrivilege);
     }
 
     @Test
     void scopeExitNotifiesOnlyOwnContextHandler() {
-        Map<String, Integer> before = TenantPrivilegeMultiContextContractSmokeTest.snapshotCalls();
+        Map<String, Integer> before = TenantPrivilegeMultiContextContractIntegrationTest.snapshotCalls();
 
         tenantPrivilege.elevated((Runnable) () -> { });
 
-        TenantPrivilegeMultiContextContractSmokeTest.assertOnlyTagInvoked("A", before);
+        TenantPrivilegeMultiContextContractIntegrationTest.assertOnlyTagInvoked("A", before);
     }
 
     /**
@@ -220,16 +220,16 @@ class TenantPrivilegeMultiContextContractASmokeTest {
  */
 @SpringBootTest(classes = ProjectApplication.class, properties = "tenant.multi-context.probe=B")
 @ActiveProfiles("test")
-@Import(TenantPrivilegeMultiContextContractBSmokeTest.ProbeBConfiguration.class)
+@Import(TenantPrivilegeMultiContextContractBIntegrationTest.ProbeBConfiguration.class)
 @ScaffoldGenerated
-class TenantPrivilegeMultiContextContractBSmokeTest {
+class TenantPrivilegeMultiContextContractBIntegrationTest {
 
     @TestConfiguration
     static class ProbeBConfiguration {
 
         @Bean
         TenantScopeExitHandler recordingScopeExitHandlerB() {
-            return new TenantPrivilegeMultiContextContractSmokeTest.RecordingScopeExitHandler("B");
+            return new TenantPrivilegeMultiContextContractIntegrationTest.RecordingScopeExitHandler("B");
         }
     }
 
@@ -245,21 +245,21 @@ class TenantPrivilegeMultiContextContractBSmokeTest {
                 .as("context B must collect its own JpaTenantScopeExitHandler + probe handler")
                 .hasSize(2)
                 .anyMatch(h -> h instanceof JpaTenantScopeExitHandler)
-                .anyMatch(h -> h instanceof TenantPrivilegeMultiContextContractSmokeTest.RecordingScopeExitHandler r
+                .anyMatch(h -> h instanceof TenantPrivilegeMultiContextContractIntegrationTest.RecordingScopeExitHandler r
                         && "B".equals(r.contextTag()));
         assertThat(scopeExitHandlers)
                 .as("context B must NOT collect context A's probe handler")
-                .noneMatch(h -> h instanceof TenantPrivilegeMultiContextContractSmokeTest.RecordingScopeExitHandler r
+                .noneMatch(h -> h instanceof TenantPrivilegeMultiContextContractIntegrationTest.RecordingScopeExitHandler r
                         && "A".equals(r.contextTag()));
-        TenantPrivilegeMultiContextContractSmokeTest.assertDistinctPrivilegeInstances("B", tenantPrivilege);
+        TenantPrivilegeMultiContextContractIntegrationTest.assertDistinctPrivilegeInstances("B", tenantPrivilege);
     }
 
     @Test
     void scopeExitNotifiesOnlyOwnContextHandler() {
-        Map<String, Integer> before = TenantPrivilegeMultiContextContractSmokeTest.snapshotCalls();
+        Map<String, Integer> before = TenantPrivilegeMultiContextContractIntegrationTest.snapshotCalls();
 
         tenantPrivilege.withReadBypass((Runnable) () -> { });
 
-        TenantPrivilegeMultiContextContractSmokeTest.assertOnlyTagInvoked("B", before);
+        TenantPrivilegeMultiContextContractIntegrationTest.assertOnlyTagInvoked("B", before);
     }
 }

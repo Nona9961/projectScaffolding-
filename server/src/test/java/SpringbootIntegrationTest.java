@@ -10,5 +10,5 @@ import com.nona.annotation.ScaffoldGenerated;
 @SpringBootTest(classes = ProjectApplication.class)
 @ActiveProfiles("test")
 @ScaffoldGenerated
-public class SpringbootSmokeTest {
+public class SpringbootIntegrationTest {
 }

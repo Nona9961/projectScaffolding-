@@ -32,7 +32,7 @@ import java.util.concurrent.atomic.AtomicReference;
 @SpringBootTest(classes = ProjectApplication.class)
 @ActiveProfiles("test")
 @ScaffoldGenerated
-class RequestContextPropagatingTaskDecoratorSmokeTest {
+class RequestContextPropagatingTaskDecoratorIntegrationTest {
 
     @Autowired
     private TenantContextAccessor tenantContextAccessor;

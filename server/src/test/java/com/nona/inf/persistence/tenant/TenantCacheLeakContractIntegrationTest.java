@@ -37,7 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(classes = ProjectApplication.class)
 @ActiveProfiles("test")
 @ScaffoldGenerated
-class TenantCacheLeakContractSmokeTest {
+class TenantCacheLeakContractIntegrationTest {
 
     @Autowired
     private TestTenantNoteRepository tenantNoteRepository;
