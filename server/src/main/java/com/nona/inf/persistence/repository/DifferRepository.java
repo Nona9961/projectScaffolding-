@@ -3,7 +3,7 @@ package com.nona.inf.persistence.repository;
 import com.nona.annotation.ScaffoldGenerated;
 import com.nona.changeTracking.domain.model.changeset.ChangeSet;
 import com.nona.changeTracking.domain.model.tracking.ChangeTracker;
-import com.nona.inf.context.TrackingContext;
+import com.nona.inf.context.ExecutionContext;
 import com.nona.inf.persistence.converters.RdbGeneralConvertor;
 import com.nona.inf.persistence.po.BasePO;
 import com.nona.inf.persistence.tracking.ChangeTrackerProvider;
@@ -38,15 +38,15 @@ public abstract class DifferRepository<Root, PO extends BasePO, Other> implement
     protected final RdbGeneralConvertor<Root, PO, Other> convertor;
 
     /**
-     * ChangeTracker 提供者（创建跟踪作用域持有者内的懒创建追踪器）
+     * ChangeTracker 提供者（创建执行作用域持有者内的懒创建追踪器）
      */
     protected final ChangeTrackerProvider changeTrackerProvider;
 
     /**
      * {@inheritDoc}
      * <p>
-     * 读取成功后登记到 ChangeTracker 建立快照基线，并将根对象快照登记入当前跟踪作用域持有者
-     * （{@code TrackingContext.scope().getSnapshots()}）。
+     * 读取成功后登记到 ChangeTracker 建立快照基线，并将根对象快照登记入当前执行作用域持有者
+     * （{@code ExecutionContext.scope().getSnapshots()}）。
      */
     @Override
     public Root getByID(Long id) {
@@ -61,7 +61,7 @@ public abstract class DifferRepository<Root, PO extends BasePO, Other> implement
         }
 
         getOrCreateChangeTracker().track(root);
-        TrackingContext.scope().getSnapshots().put(id, root);
+        ExecutionContext.scope().getSnapshots().put(id, root);
         return root;
     }
 
@@ -124,7 +124,7 @@ public abstract class DifferRepository<Root, PO extends BasePO, Other> implement
         if (!isTracked(id)) {
             doInsert(root);
             changeTracker.track(root);
-            TrackingContext.scope().getSnapshots().put(id, root);
+            ExecutionContext.scope().getSnapshots().put(id, root);
             return true;
         }
 
@@ -136,7 +136,7 @@ public abstract class DifferRepository<Root, PO extends BasePO, Other> implement
         doUpdate(root, changeSet);
 
         changeTracker.track(root);
-        TrackingContext.scope().getSnapshots().put(id, root);
+        ExecutionContext.scope().getSnapshots().put(id, root);
         return true;
     }
 
@@ -163,21 +163,21 @@ public abstract class DifferRepository<Root, PO extends BasePO, Other> implement
     /**
      * 检查该 ID 的根对象是否已被追踪（快照是否已建立）。
      * <p>
-     * 读取当前跟踪作用域持有者的快照注册表；未绑定作用域时由 {@link #getOrCreateChangeTracker()}
+     * 读取当前执行作用域持有者的快照注册表；未绑定作用域时由 {@link #getOrCreateChangeTracker()}
      * 先行抛出 {@link IllegalStateException}（fail-closed），故到达此处时作用域必已绑定。
      *
      * @param id 主键 ID
      * @return 已追踪返回 true
      */
     private boolean isTracked(Long id) {
-        return TrackingContext.scope().getSnapshots().containsKey(id);
+        return ExecutionContext.scope().getSnapshots().containsKey(id);
     }
 
     /**
-     * 获取或创建 ChangeTracker（跟踪作用域内懒创建单例；未绑定作用域时抛
+     * 获取或创建 ChangeTracker（执行作用域内懒创建单例；未绑定作用域时抛
      * {@link IllegalStateException}——fail-closed）。
      */
     protected ChangeTracker getOrCreateChangeTracker() {
-        return TrackingContext.tracker(changeTrackerProvider);
+        return ExecutionContext.tracker(changeTrackerProvider);
     }
 }

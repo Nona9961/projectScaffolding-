@@ -3,7 +3,7 @@ package com.nona.inf.persistence.integration;
 import com.nona.changeTracking.domain.model.changeset.*;
 import com.nona.changeTracking.domain.model.tracking.ChangeTracker;
 import com.nona.changeTracking.internal.capability.DefaultTrackingCapabilityProvider;
-import com.nona.inf.context.TrackingContext;
+import com.nona.inf.context.ExecutionContext;
 import com.nona.inf.persistence.converters.CompositePoConverter;
 import com.nona.inf.persistence.converters.ConverterRegistry;
 import com.nona.inf.persistence.converters.PoConverter;
@@ -1390,7 +1390,7 @@ class FullIntegrationUnitTest {
         @Test
         @DisplayName("B01: 无变更时不执行 SQL")
         void shouldNotExecuteSqlWhenNoChanges() {
-            TrackingContext.withScope(() -> {
+            ExecutionContext.withScope(() -> {
                 // 准备初始数据
                 Order order = new Order(1L, "ORD-001");
                 order.setStatus("PENDING");
@@ -1410,7 +1410,7 @@ class FullIntegrationUnitTest {
         @Test
         @DisplayName("B02: 主表单字段变更")
         void shouldUpdateMainTableValueChange() {
-            TrackingContext.withScope(() -> {
+            ExecutionContext.withScope(() -> {
                 // 准备初始数据
                 Order order = new Order(1L, "ORD-001");
                 order.setStatus("PENDING");
@@ -1436,7 +1436,7 @@ class FullIntegrationUnitTest {
         @Test
         @DisplayName("C01: 集合项新增")
         void shouldInsertNewCollectionItem() {
-            TrackingContext.withScope(() -> {
+            ExecutionContext.withScope(() -> {
                 // 准备初始数据
                 Order order = new Order(1L, "ORD-001");
                 order.setStatus("PENDING");
@@ -1468,7 +1468,7 @@ class FullIntegrationUnitTest {
         @Test
         @DisplayName("C02: 集合项删除")
         void shouldDeleteCollectionItem() {
-            TrackingContext.withScope(() -> {
+            ExecutionContext.withScope(() -> {
                 // 准备初始数据
                 Order order = new Order(1L, "ORD-001");
                 order.setStatus("PENDING");
@@ -1504,7 +1504,7 @@ class FullIntegrationUnitTest {
         @Test
         @DisplayName("C03: 集合项字段变更")
         void shouldUpdateCollectionItemField() {
-            TrackingContext.withScope(() -> {
+            ExecutionContext.withScope(() -> {
                 // 准备初始数据
                 Order order = new Order(1L, "ORD-001");
                 order.setStatus("PENDING");
@@ -1533,7 +1533,7 @@ class FullIntegrationUnitTest {
         @Test
         @DisplayName("X01: 综合场景-主表+子表同时变更")
         void shouldHandleComplexChanges() {
-            TrackingContext.withScope(() -> {
+            ExecutionContext.withScope(() -> {
                 // 准备初始数据
                 Order order = new Order(1L, "ORD-001");
                 order.setStatus("PENDING");
@@ -1576,7 +1576,7 @@ class FullIntegrationUnitTest {
         @Test
         @DisplayName("E01: 单实体字段变更")
         void shouldUpdateSingleEntityField_E2E() {
-            TrackingContext.withScope(() -> {
+            ExecutionContext.withScope(() -> {
                 // 准备初始数据
                 Order order = new Order(1L, "ORD-001");
                 order.setStatus("PENDING");
@@ -1607,7 +1607,7 @@ class FullIntegrationUnitTest {
         @Test
         @DisplayName("E02: 单实体嵌套值对象变更")
         void shouldUpdateNestedValueObjectInSingleEntity_E2E() {
-            TrackingContext.withScope(() -> {
+            ExecutionContext.withScope(() -> {
                 // 准备初始数据
                 Order order = new Order(1L, "ORD-001");
                 Customer customer = new Customer(10L, "张三");
@@ -1637,7 +1637,7 @@ class FullIntegrationUnitTest {
         @Test
         @DisplayName("E03: 单实体内集合新增")
         void shouldAddItemToSingleEntityCollection_E2E() {
-            TrackingContext.withScope(() -> {
+            ExecutionContext.withScope(() -> {
                 // 准备初始数据
                 Order order = new Order(1L, "ORD-001");
                 Customer customer = new Customer(10L, "张三");
@@ -1668,7 +1668,7 @@ class FullIntegrationUnitTest {
         @Test
         @DisplayName("E04: 单实体内集合项字段变更")
         void shouldUpdateFieldInSingleEntityCollectionItem_E2E() {
-            TrackingContext.withScope(() -> {
+            ExecutionContext.withScope(() -> {
                 // 准备初始数据
                 Order order = new Order(1L, "ORD-001");
                 Customer customer = new Customer(10L, "张三");
@@ -1699,7 +1699,7 @@ class FullIntegrationUnitTest {
         @Test
         @DisplayName("N02: 三层嵌套字段变更")
         void shouldUpdateThirdLevelNestedField_E2E() {
-            TrackingContext.withScope(() -> {
+            ExecutionContext.withScope(() -> {
                 // 准备初始数据
                 Order order = new Order(1L, "ORD-001");
                 OrderItem item = new OrderItem(101L, "SKU-001", "商品A", 2, Money.of(new BigDecimal("30.00")));
@@ -1729,7 +1729,7 @@ class FullIntegrationUnitTest {
         @Test
         @DisplayName("N03: 四层嵌套字段变更")
         void shouldUpdateFourthLevelNestedField_E2E() {
-            TrackingContext.withScope(() -> {
+            ExecutionContext.withScope(() -> {
                 // 准备初始数据
                 Order order = new Order(1L, "ORD-001");
                 OrderItem item = new OrderItem(101L, "SKU-001", "商品A", 2, Money.of(new BigDecimal("30.00")));
@@ -1760,7 +1760,7 @@ class FullIntegrationUnitTest {
         @Test
         @DisplayName("N04: 三层集合新增")
         void shouldAddThirdLevelCollectionItem_E2E() {
-            TrackingContext.withScope(() -> {
+            ExecutionContext.withScope(() -> {
                 // 准备初始数据
                 Order order = new Order(1L, "ORD-001");
                 OrderItem item = new OrderItem(101L, "SKU-001", "商品A", 2, Money.of(new BigDecimal("30.00")));
@@ -1789,7 +1789,7 @@ class FullIntegrationUnitTest {
         @Test
         @DisplayName("N05: 四层集合新增")
         void shouldAddFourthLevelCollectionItem_E2E() {
-            TrackingContext.withScope(() -> {
+            ExecutionContext.withScope(() -> {
                 // 准备初始数据
                 Order order = new Order(1L, "ORD-001");
                 OrderItem item = new OrderItem(101L, "SKU-001", "商品A", 2, Money.of(new BigDecimal("30.00")));
@@ -1820,7 +1820,7 @@ class FullIntegrationUnitTest {
         @Test
         @DisplayName("N07: 嵌套值对象替换")
         void shouldReplaceNestedValueObject_E2E() {
-            TrackingContext.withScope(() -> {
+            ExecutionContext.withScope(() -> {
                 // 准备初始数据
                 Order order = new Order(1L, "ORD-001");
                 OrderItem item = new OrderItem(101L, "SKU-001", "商品A", 2, Money.of(new BigDecimal("30.00")));
@@ -1852,7 +1852,7 @@ class FullIntegrationUnitTest {
         @Disabled("Map 持久化需要 JSON 序列化，当前框架未实现")
         @DisplayName("M01: Map 新增键值对")
         void shouldAddMapEntry_E2E() {
-            TrackingContext.withScope(() -> {
+            ExecutionContext.withScope(() -> {
                 // 准备初始数据
                 Order order = new Order(1L, "ORD-001");
                 order.setStatus("PENDING");
@@ -1880,7 +1880,7 @@ class FullIntegrationUnitTest {
         @Disabled("Map 持久化需要 JSON 序列化，当前框架未实现")
         @DisplayName("M03: Map 值变更")
         void shouldUpdateMapValue_E2E() {
-            TrackingContext.withScope(() -> {
+            ExecutionContext.withScope(() -> {
                 // 准备初始数据
                 Order order = new Order(1L, "ORD-001");
                 order.getExtensions().put("key1", "value1");
@@ -1906,7 +1906,7 @@ class FullIntegrationUnitTest {
         @Disabled("Map 持久化需要 JSON 序列化，当前框架未实现")
         @DisplayName("M04: 嵌套 Map 变更")
         void shouldUpdateNestedMap_E2E() {
-            TrackingContext.withScope(() -> {
+            ExecutionContext.withScope(() -> {
                 // 准备初始数据
                 Order order = new Order(1L, "ORD-001");
                 OrderItem item = new OrderItem(101L, "SKU-001", "商品A", 2, Money.of(new BigDecimal("30.00")));

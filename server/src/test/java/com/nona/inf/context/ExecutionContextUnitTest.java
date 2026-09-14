@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * {@link TrackingContext} 场景测试：词法作用域绑定 / 懒创建 / fail-closed。
+ * {@link ExecutionContext} 场景测试：词法作用域绑定 / 懒创建 / fail-closed。
  * <p>
  * 契约验证点：
  * <ul>
@@ -25,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * @author nona9961
  */
 @ScaffoldGenerated
-class TrackingContextUnitTest {
+class ExecutionContextUnitTest {
 
     // ========== Happy path ==========
 
@@ -34,12 +34,12 @@ class TrackingContextUnitTest {
      */
     @Test
     void shouldReturnSameScopeInstanceWithinScope() {
-        final AtomicReference<TrackingScope> first = new AtomicReference<>();
-        final AtomicReference<TrackingScope> second = new AtomicReference<>();
+        final AtomicReference<ExecutionContextState> first = new AtomicReference<>();
+        final AtomicReference<ExecutionContextState> second = new AtomicReference<>();
 
-        TrackingContext.withScope(() -> {
-            first.set(TrackingContext.scope());
-            second.set(TrackingContext.scope());
+        ExecutionContext.withScope(() -> {
+            first.set(ExecutionContext.scope());
+            second.set(ExecutionContext.scope());
         });
 
         assertThat(first.get()).isNotNull();
@@ -56,9 +56,9 @@ class TrackingContextUnitTest {
         final AtomicReference<ChangeTracker> first = new AtomicReference<>();
         final AtomicReference<ChangeTracker> second = new AtomicReference<>();
 
-        TrackingContext.withScope(() -> {
-            first.set(TrackingContext.tracker(provider));
-            second.set(TrackingContext.tracker(provider));
+        ExecutionContext.withScope(() -> {
+            first.set(ExecutionContext.tracker(provider));
+            second.set(ExecutionContext.tracker(provider));
         });
 
         assertThat(first.get()).isNotNull();
@@ -73,7 +73,7 @@ class TrackingContextUnitTest {
     void shouldNotCreateTrackerWhenTrackerUntouched() {
         final CountingProvider provider = new CountingProvider();
 
-        TrackingContext.withScope(() -> assertThat(TrackingContext.scope()).isNotNull());
+        ExecutionContext.withScope(() -> assertThat(ExecutionContext.scope()).isNotNull());
 
         assertThat(provider.creations()).isZero();
     }
@@ -86,7 +86,7 @@ class TrackingContextUnitTest {
      */
     @Test
     void shouldFailClosedWhenTrackerCalledWithoutBoundScope() {
-        assertThatThrownBy(() -> TrackingContext.tracker(new CountingProvider()))
+        assertThatThrownBy(() -> ExecutionContext.tracker(new CountingProvider()))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -97,10 +97,10 @@ class TrackingContextUnitTest {
      */
     @Test
     void shouldBeUnboundAfterScopeExit() {
-        TrackingContext.withScope(() -> assertThat(TrackingContext.scope()).isNotNull());
+        ExecutionContext.withScope(() -> assertThat(ExecutionContext.scope()).isNotNull());
 
-        assertThat(TrackingContext.scope()).isNull();
-        assertThatThrownBy(() -> TrackingContext.tracker(new CountingProvider()))
+        assertThat(ExecutionContext.scope()).isNull();
+        assertThatThrownBy(() -> ExecutionContext.tracker(new CountingProvider()))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -110,11 +110,11 @@ class TrackingContextUnitTest {
      */
     @Test
     void shouldRestoreUnboundAfterExceptionInScope() {
-        assertThatThrownBy(() -> TrackingContext.withScope(() -> {
+        assertThatThrownBy(() -> ExecutionContext.withScope(() -> {
             throw new IllegalStateException("boom");
         })).isInstanceOf(IllegalStateException.class);
 
-        assertThat(TrackingContext.scope()).isNull();
+        assertThat(ExecutionContext.scope()).isNull();
     }
 
     /**
@@ -122,13 +122,13 @@ class TrackingContextUnitTest {
      */
     @Test
     void shouldRestoreOuterScopeAfterNestedScopeExits() {
-        final AtomicReference<TrackingScope> outer = new AtomicReference<>();
-        final AtomicReference<TrackingScope> inner = new AtomicReference<>();
+        final AtomicReference<ExecutionContextState> outer = new AtomicReference<>();
+        final AtomicReference<ExecutionContextState> inner = new AtomicReference<>();
 
-        TrackingContext.withScope(() -> {
-            outer.set(TrackingContext.scope());
-            TrackingContext.withScope(() -> inner.set(TrackingContext.scope()));
-            assertThat(TrackingContext.scope()).isSameAs(outer.get());
+        ExecutionContext.withScope(() -> {
+            outer.set(ExecutionContext.scope());
+            ExecutionContext.withScope(() -> inner.set(ExecutionContext.scope()));
+            assertThat(ExecutionContext.scope()).isSameAs(outer.get());
         });
 
         assertThat(inner.get()).isNotNull();

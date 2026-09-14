@@ -20,7 +20,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * {@link TrackingFilter} 场景测试：HTTP 入口作用域绑定契约。
+ * {@link ExecutionContextFilter} 场景测试：HTTP 入口作用域绑定契约。
  * <p>
  * 契约验证点：
  * <ul>
@@ -28,38 +28,38 @@ import java.util.concurrent.atomic.AtomicReference;
  *       且经提供者懒创建 tracker 可用）</li>
  *   <li>Fail：链路异常时异常原样传播、作用域退出恢复 unbound（池化线程复用无残留）</li>
  *   <li>Critical：请求不经本过滤器时线程无绑定——「Filter 包裹生效」的对照侧；
- *       fail-closed 完整语义（未绑定调用 tracker() 抛异常）由 {@link TrackingContextUnitTest} 覆盖</li>
+ *       fail-closed 完整语义（未绑定调用 tracker() 抛异常）由 {@link ExecutionContextUnitTest} 覆盖</li>
  * </ul>
  *
  * @author nona9961
  */
 @ScaffoldGenerated
-class TrackingFilterUnitTest {
+class ExecutionContextFilterUnitTest {
 
     private static final ChangeTrackerProvider PROVIDER = new ChangeTrackerProvider(Map.of(), Set.of(), Set.of());
 
-    private final TrackingFilter filter = new TrackingFilter();
+    private final ExecutionContextFilter filter = new ExecutionContextFilter();
 
     // ========== Happy path ==========
 
     /**
-     * 经过滤器处理请求：过滤链在 {@code TrackingContext.withScope} 作用域内执行——
+     * 经过滤器处理请求：过滤链在 {@code ExecutionContext.withScope} 作用域内执行——
      * 链内捕获到非 null 持有者。
      */
     @Test
-    void shouldRunFilterChainInsideBoundTrackingScope() throws ServletException, IOException {
+    void shouldRunFilterChainInsideBoundExecutionContextState() throws ServletException, IOException {
         final MockHttpServletRequest request = new MockHttpServletRequest();
         final MockHttpServletResponse response = new MockHttpServletResponse();
-        final AtomicReference<TrackingScope> inChain = new AtomicReference<>();
+        final AtomicReference<ExecutionContextState> inChain = new AtomicReference<>();
 
-        filter.doFilter(request, response, (req, res) -> inChain.set(TrackingContext.scope()));
+        filter.doFilter(request, response, (req, res) -> inChain.set(ExecutionContext.scope()));
 
         assertThat(inChain.get()).isNotNull();
     }
 
     /**
-     * 过滤链作用域完整可用：链内 {@code TrackingContext.tracker(provider)} 懒创建返回
-     * 非 null 追踪器（非 DB 请求不触碰本调用则零创建，懒语义由 TrackingContextUnitTest 覆盖）。
+     * 过滤链作用域完整可用：链内 {@code ExecutionContext.tracker(provider)} 懒创建返回
+     * 非 null 追踪器（非 DB 请求不触碰本调用则零创建，懒语义由 ExecutionContextUnitTest 覆盖）。
      */
     @Test
     void shouldExposeWorkingTrackerInsideFilterScope() throws ServletException, IOException {
@@ -68,7 +68,7 @@ class TrackingFilterUnitTest {
         final AtomicReference<ChangeTracker> inChain = new AtomicReference<>();
 
         filter.doFilter(request, response,
-                (req, res) -> inChain.set(TrackingContext.tracker(PROVIDER)));
+                (req, res) -> inChain.set(ExecutionContext.tracker(PROVIDER)));
 
         assertThat(inChain.get()).isNotNull();
     }
@@ -77,7 +77,7 @@ class TrackingFilterUnitTest {
 
     /**
      * 请求不经本过滤器（链路闭包直接执行）时线程无绑定——Filter 包裹生效的对照断言；
-     * 未绑定场景调用 tracker() 的 fail-closed 异常语义由 {@link TrackingContextUnitTest}
+     * 未绑定场景调用 tracker() 的 fail-closed 异常语义由 {@link ExecutionContextUnitTest}
      * {@code shouldFailClosedWhenTrackerCalledWithoutBoundScope} 覆盖。
      * <p>
      * 本用例锁定「Filter 必须包裹链路」这一契约正向面：请求绕过过滤器（链路闭包直接
@@ -85,10 +85,10 @@ class TrackingFilterUnitTest {
      */
     @Test
     void shouldLeaveThreadUnboundWhenRequestBypassesFilter() {
-        final AtomicReference<TrackingScope> bypass = new AtomicReference<>();
+        final AtomicReference<ExecutionContextState> bypass = new AtomicReference<>();
 
         // 不经过 filter.doFilter，直接执行同一形状的链路闭包
-        Runnable bypassChain = () -> bypass.set(TrackingContext.scope());
+        Runnable bypassChain = () -> bypass.set(ExecutionContext.scope());
         bypassChain.run();
 
         assertThat(bypass.get()).isNull();
@@ -110,7 +110,7 @@ class TrackingFilterUnitTest {
             throw boom;
         })).isSameAs(boom);
 
-        assertThat(TrackingContext.scope()).isNull();
+        assertThat(ExecutionContext.scope()).isNull();
     }
 
     /**
@@ -127,7 +127,7 @@ class TrackingFilterUnitTest {
             throw boom;
         })).isSameAs(boom);
 
-        assertThat(TrackingContext.scope()).isNull();
+        assertThat(ExecutionContext.scope()).isNull();
     }
 
     /**
@@ -144,6 +144,6 @@ class TrackingFilterUnitTest {
             throw boom;
         })).isSameAs(boom);
 
-        assertThat(TrackingContext.scope()).isNull();
+        assertThat(ExecutionContext.scope()).isNull();
     }
 }

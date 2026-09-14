@@ -1,7 +1,7 @@
 package com.nona.inf.persistence.tenant;
 
 import com.nona.annotation.ScaffoldGenerated;
-import com.nona.inf.context.TenantContextAccessor;
+import com.nona.inf.context.ExecutionContextAccessor;
 import com.nona.inf.context.TenantPrivilege;
 import com.nona.tenant.TenantWriteGate;
 import lombok.RequiredArgsConstructor;
@@ -11,8 +11,8 @@ import org.springframework.stereotype.Component;
 /**
  * Hibernate tenant identifier resolver（discriminator multi-tenancy）
  * <p>
- * - 默认：使用当前跟踪作用域 holder（{@code TrackingScope}）的 tenantID
- * - tenant 缺失：返回 {@link TenantContextAccessor#MISSING_TENANT_ID} 实现 fail-closed
+ * - 默认：使用当前执行作用域 holder（{@code ExecutionContextState}）的 tenantID
+ * - tenant 缺失：返回 {@link ExecutionContextAccessor#MISSING_TENANT_ID} 实现 fail-closed
  * - 任一读放行作用域（提权或 {@code @CrossTenant}）：返回 root tenant，绕过 Hibernate 内置的 _tenantId filter
  *
  * @author nona9961
@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 @ScaffoldGenerated
-public class TrackingContextTenantIdentifierResolver implements CurrentTenantIdentifierResolver<String> {
+public class ExecutionContextTenantIdentifierResolver implements CurrentTenantIdentifierResolver<String> {
 
     /**
      * 根租户 ID：提权作用域下返回该值以绕过 discriminator 过滤。
@@ -30,9 +30,9 @@ public class TrackingContextTenantIdentifierResolver implements CurrentTenantIde
     public static final String ROOT_TENANT_ID = TenantWriteGate.ROOT_TENANT_ID;
 
     /**
-     * 租户上下文访问器（单级解析：跟踪作用域持有者优先 → 嵌套异步快照回退）
+     * 执行上下文访问器（单级解析：执行作用域持有者优先 → 嵌套异步快照回退）
      */
-    private final TenantContextAccessor tenantContextAccessor;
+    private final ExecutionContextAccessor executionContextAccessor;
 
     /**
      * 租户提权/读放行作用域状态（构造注入的 bean；作用域退出处理器按容器收集）
@@ -43,14 +43,14 @@ public class TrackingContextTenantIdentifierResolver implements CurrentTenantIde
      * 为 Hibernate 解析当前会话的 tenant identifier。
      *
      * @return 当前 tenant identifier；任一读放行作用域（提权或 {@code @CrossTenant}）内返回
-     *     {@link #ROOT_TENANT_ID}，tenant 缺失时返回 {@link TenantContextAccessor#MISSING_TENANT_ID}
+     *     {@link #ROOT_TENANT_ID}，tenant 缺失时返回 {@link ExecutionContextAccessor#MISSING_TENANT_ID}
      */
     @Override
     public String resolveCurrentTenantIdentifier() {
         if (tenantPrivilege.isAnyReadBypassActive()) {
             return ROOT_TENANT_ID;
         }
-        return tenantContextAccessor.getTenantIDOrMissing();
+        return executionContextAccessor.getTenantIDOrMissing();
     }
 
     /**

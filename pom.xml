@@ -45,6 +45,12 @@
                 <artifactId>log4j-core</artifactId>
                 <version>${log4j2.version}</version>
             </dependency>
+            <!-- JSON 模板布局（文件侧 OTel 字段集），与 log4j-core 同版本管理 -->
+            <dependency>
+                <groupId>org.apache.logging.log4j</groupId>
+                <artifactId>log4j-layout-template-json</artifactId>
+                <version>${log4j2.version}</version>
+            </dependency>
             <dependency>
                 <groupId>org.apache.commons</groupId>
                 <artifactId>commons-lang3</artifactId>
@@ -95,6 +101,10 @@
                     <excludes>
                         <exclude>**/*IntegrationTest</exclude>
                     </excludes>
+                    <!-- 测试 JVM 进程环境：供 LOG_PATH 环境覆盖与装配面用例验证真实解析 -->
+                    <environmentVariables>
+                        <LOG_PATH>${project.build.directory}/test-logs</LOG_PATH>
+                    </environmentVariables>
                 </configuration>
             </plugin>
             <plugin>

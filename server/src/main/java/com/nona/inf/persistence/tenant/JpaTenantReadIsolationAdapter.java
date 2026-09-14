@@ -1,7 +1,7 @@
 package com.nona.inf.persistence.tenant;
 
 import com.nona.annotation.ScaffoldGenerated;
-import com.nona.inf.context.TenantContextAccessor;
+import com.nona.inf.context.ExecutionContextAccessor;
 import com.nona.inf.context.TenantPrivilege;
 import jakarta.persistence.EntityManagerFactory;
 import lombok.RequiredArgsConstructor;
@@ -48,7 +48,7 @@ public class JpaTenantReadIsolationAdapter implements TenantReadIsolationAdapter
 
     private final EntityManagerFactory entityManagerFactory;
 
-    private final TenantContextAccessor tenantContextAccessor;
+    private final ExecutionContextAccessor executionContextAccessor;
 
     /**
      * 租户提权/读放行作用域状态（构造注入的 bean；作用域退出处理器按容器收集）
@@ -75,6 +75,6 @@ public class JpaTenantReadIsolationAdapter implements TenantReadIsolationAdapter
             return;
         }
         session.enableFilter(TENANT_ID_FILTER_NAME)
-                .setParameter(TENANT_ID_PARAMETER_NAME, tenantContextAccessor.getTenantIDOrMissing());
+                .setParameter(TENANT_ID_PARAMETER_NAME, executionContextAccessor.getTenantIDOrMissing());
     }
 }

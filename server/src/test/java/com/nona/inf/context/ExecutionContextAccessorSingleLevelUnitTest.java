@@ -8,13 +8,13 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 /**
- * 场景契约测试：{@link TenantContextAccessor} 读取面单级化
- * （request scope 两级解析 → {@link TrackingContext} holder 单级主通路）。
+ * 场景契约测试：{@link ExecutionContextAccessor} 读取面单级化
+ * （request scope 两级解析 → {@link ExecutionContext} holder 单级主通路）。
  * <p>
  * 契约：{@code getTenantID} / {@code getRole} / {@code getIdentity} / {@code captureSnapshot}
  * 解析顺序收敛为：
  * <ol>
- *   <li>{@link TrackingContext#scope()} 持有者优先（字段非空才取）</li>
+ *   <li>{@link ExecutionContext#scope()} 持有者优先（字段非空才取）</li>
  *   <li>{@code boundSnapshot()} 嵌套异步回退（worker 内再派发继承外层视角；
  *       真实传播形状 = {@code withSnapshot(snapshot, () -> withScope(task))}）</li>
  *   <li>两者皆无可取 → {@code null}（fail-closed 保留）</li>
@@ -25,13 +25,13 @@ import java.util.List;
  * @author nona9961
  */
 @ScaffoldGenerated
-class TenantAccessorSingleLevelUnitTest {
+class ExecutionContextAccessorSingleLevelUnitTest {
 
     /**
      * 被测访问器：单级化后无参构造（字段删除，默认无参）；本测试始终不激活 request
      * scope（纯 JUnit 形态，直接实例化，不经 Spring 装配）。
      */
-    private final TenantContextAccessor accessor = new TenantContextAccessor();
+    private final ExecutionContextAccessor accessor = new ExecutionContextAccessor();
 
     // ==================== Happy path ====================
 
@@ -40,10 +40,10 @@ class TenantAccessorSingleLevelUnitTest {
      */
     @Test
     void holderTripletShouldBeReadWithinScope() {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t1");
-            TrackingContext.scope().setRole(List.of("admin"));
-            TrackingContext.scope().setIdentity("user-42");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t1");
+            ExecutionContext.scope().setRole(List.of("admin"));
+            ExecutionContext.scope().setIdentity("user-42");
 
             assertThat(accessor.getTenantID()).isEqualTo("t1");
             assertThat(accessor.getRole()).containsExactly("admin");
@@ -58,9 +58,9 @@ class TenantAccessorSingleLevelUnitTest {
      */
     @Test
     void boundSnapshotShouldFallbackWhenHolderEmpty() {
-        final TenantContextAccessor.ContextSnapshot snapshot = new TenantContextAccessor.ContextSnapshot(
+        final ContextSnapshot snapshot = new ContextSnapshot(
                 "fallback-tenant", List.of("visitor"), "fb-user");
-        TenantContextAccessor.withSnapshot(snapshot, () -> TrackingContext.withScope(() -> {
+        ExecutionContextAccessor.withSnapshot(snapshot, () -> ExecutionContext.withScope(() -> {
             assertThat(accessor.getTenantID()).isEqualTo("fallback-tenant");
             assertThat(accessor.getRole()).containsExactly("visitor");
             assertThat(accessor.getIdentity()).isEqualTo("fb-user");
@@ -73,12 +73,12 @@ class TenantAccessorSingleLevelUnitTest {
      */
     @Test
     void captureSnapshotShouldReadFromHolder() {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t1");
-            TrackingContext.scope().setRole(List.of("admin"));
-            TrackingContext.scope().setIdentity("user-42");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t1");
+            ExecutionContext.scope().setRole(List.of("admin"));
+            ExecutionContext.scope().setIdentity("user-42");
 
-            final TenantContextAccessor.ContextSnapshot captured = accessor.captureSnapshot();
+            final ContextSnapshot captured = accessor.captureSnapshot();
             assertThat(captured.tenantID()).isEqualTo("t1");
             assertThat(captured.role()).containsExactly("admin");
             assertThat(captured.identity()).isEqualTo("user-42");
@@ -105,7 +105,7 @@ class TenantAccessorSingleLevelUnitTest {
     @Test
     void missingTenantShouldYieldPlaceholder() {
         assertThat(accessor.getTenantIDOrMissing())
-                .isEqualTo(TenantContextAccessor.MISSING_TENANT_ID);
+                .isEqualTo(ExecutionContextAccessor.MISSING_TENANT_ID);
     }
 
     // ==================== Fail path ====================
@@ -116,8 +116,8 @@ class TenantAccessorSingleLevelUnitTest {
      */
     @Test
     void holderWriteShouldNotLeakAfterScopeExit() {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t1");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t1");
             assertThat(accessor.getTenantID()).isEqualTo("t1");
         });
         assertThat(accessor.getTenantID()).isNull();
@@ -130,10 +130,10 @@ class TenantAccessorSingleLevelUnitTest {
      */
     @Test
     void innerScopeHolderShouldOverrideOuterBoundSnapshot() {
-        final TenantContextAccessor.ContextSnapshot outer = new TenantContextAccessor.ContextSnapshot(
+        final ContextSnapshot outer = new ContextSnapshot(
                 "outer-tenant", List.of("admin"), "outer-user");
-        TenantContextAccessor.withSnapshot(outer, () -> TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("inner-tenant");
+        ExecutionContextAccessor.withSnapshot(outer, () -> ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("inner-tenant");
 
             assertThat(accessor.getTenantID()).isEqualTo("inner-tenant");
         }));
@@ -145,10 +145,10 @@ class TenantAccessorSingleLevelUnitTest {
      */
     @Test
     void holderFilledFieldShouldOverrideSnapshotPerField() {
-        final TenantContextAccessor.ContextSnapshot snapshot = new TenantContextAccessor.ContextSnapshot(
+        final ContextSnapshot snapshot = new ContextSnapshot(
                 "snap-tenant", List.of("admin"), "snap-user");
-        TenantContextAccessor.withSnapshot(snapshot, () -> TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("holder-tenant");
+        ExecutionContextAccessor.withSnapshot(snapshot, () -> ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("holder-tenant");
 
             assertThat(accessor.getTenantID()).isEqualTo("holder-tenant");
             assertThat(accessor.getRole()).containsExactly("admin");

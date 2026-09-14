@@ -1,7 +1,7 @@
 package com.nona.inf.persistence.tenant;
 
 import com.nona.annotation.ScaffoldGenerated;
-import com.nona.inf.context.TenantContextAccessor;
+import com.nona.inf.context.ExecutionContextAccessor;
 import com.nona.inf.context.TenantPrivilege;
 import com.nona.inf.persistence.po.TenantScopedBasePO;
 import com.nona.tenant.TenantWriteGate;
@@ -30,7 +30,7 @@ import org.springframework.stereotype.Component;
 @ScaffoldGenerated
 public class TenantRepositoryAspect {
 
-    private final TenantContextAccessor tenantContextAccessor;
+    private final ExecutionContextAccessor executionContextAccessor;
 
     /**
      * 租户提权/读放行作用域状态（构造注入的 bean；作用域退出处理器按容器收集）
@@ -71,7 +71,7 @@ public class TenantRepositoryAspect {
         if (args == null || args.length == 0) {
             return;
         }
-        final String contextTenant = tenantContextAccessor.getTenantID();
+        final String contextTenant = executionContextAccessor.getTenantID();
         final boolean elevated = tenantPrivilege.isActive();
         for (Object arg : args) {
             if (arg instanceof TenantScopedBasePO po) {

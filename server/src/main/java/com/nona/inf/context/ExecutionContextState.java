@@ -11,16 +11,19 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 每作用域可变的跟踪上下文持有者（per-scope holder，非 Spring bean）。
+ * 每作用域可变的执行上下文持有者（per-scope holder，非 Spring bean）。
  * <p>
- * 由 {@link TrackingContext#withScope(Runnable)} 创建并作为 {@link ScopedValue} 的值绑定，
+ * 由 {@link ExecutionContext#withScope(Runnable)} 创建并作为 {@link ScopedValue} 的值绑定，
  * 绑定期间引用稳定：作用域内对字段的写入为单线程操作（JEP 506「不可变或同步」之「或」分支）。
  * 持有者<b>永不跨线程共享</b>——跨线程边界一律以不可变快照传播。
  * <p>
  * 承载内容：
  * <ul>
- *   <li>三元组（tenantID / role / identity）：消费者授权过滤器的迁移写入目标
- *       （原 {@code threadContext.setX} 路径改为本持有者 setter，须运行在 {@link TrackingContext#withScope} 作用域内）</li>
+ *   <li>三元组（tenantID / role / identity）：消费者授权过滤器在作用域内的写入目标
+ *       （经本持有者 setter 写入，须运行在 {@link ExecutionContext#withScope} 作用域内）</li>
+ *   <li>跟踪身份（{@link TraceIdentity}）：作用域内整体写入 / 整体清除的纯状态
+ *       （{@link #setTraceIdentity(TraceIdentity)}），不产生线程级副作用——
+ *       日志侧消费者（拉取模式）在需要时经 {@link ExecutionContext#currentTraceIdentity()} 读取</li>
  *   <li>{@code snapshots}：根对象注册表（{@code DifferRepository.isTracked} 读、快照登记写）</li>
  *   <li>{@code tracker}：懒创建——首次 {@link #getOrCreateTracker} 时才创建并留存，
  *       非 DB 访问路径永不创建；异步 worker 场景（SNAPSHOT 槽携带非空
@@ -31,7 +34,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * @author nona9961
  */
 @ScaffoldGenerated
-public final class TrackingScope {
+public final class ExecutionContextState {
 
     /**
      * 当前租户 ID
@@ -47,6 +50,13 @@ public final class TrackingScope {
      * 请求者身份标识（token / userId / apiKey 等）
      */
     private String identity;
+
+    /**
+     * 当前作用域的跟踪身份（{@link TraceIdentity}）；未写入时为 {@code null}。
+     * <p>
+     * 整体写入 / 整体清除：不存在部分更新窗口。
+     */
+    private TraceIdentity traceIdentity;
 
     /**
      * 根对象快照注册表（key 为根对象 ID）。
@@ -116,6 +126,29 @@ public final class TrackingScope {
     }
 
     /**
+     * 获取当前作用域的跟踪身份。
+     *
+     * @return 跟踪身份；未写入时为 {@code null}
+     */
+    @Nullable
+    public TraceIdentity getTraceIdentity() {
+        return traceIdentity;
+    }
+
+    /**
+     * 设置当前作用域的跟踪身份（纯字段写入）：非 {@code null} 整体写入、
+     * {@code null} 整体清除——OTel span context 语义，不存在部分更新窗口。
+     * <p>
+     * 与三元组 setter 同一写入路径（须运行在 {@link ExecutionContext#withScope} 作用域内）；
+     * 写入不产生任何线程级副作用，显式清除后该作用域即无身份。
+     *
+     * @param traceIdentity 跟踪身份；传 {@code null} 表示清除
+     */
+    public void setTraceIdentity(@Nullable TraceIdentity traceIdentity) {
+        this.traceIdentity = traceIdentity;
+    }
+
+    /**
      * 获取根对象快照注册表（返回内部集合，允许原地读写）。
      *
      * @return 根对象 ID → 根对象 的注册表
@@ -128,7 +161,7 @@ public final class TrackingScope {
      * 获取当前作用域的变更追踪器；尚未创建时懒创建并留存。
      * <p>
      * <strong>首次创建钩子</strong>：创建时刻检查 SNAPSHOT 槽已绑定快照
-     * （{@link TenantContextAccessor#boundSnapshot()}）——快照携带非空
+     * （{@link ExecutionContextAccessor#boundSnapshot()}）——快照携带非空
      * {@code trackingBaseline}（异步 worker：提交线程已导出基线）时经
      * {@code ChangeTracker.fromBaseline(provider.createCapability(), baseline)} 从基线重建，
      * <b>不重新脱水</b>（对已修改实体重新 track 会得到空 diff，变更静默丢失）；
@@ -155,7 +188,7 @@ public final class TrackingScope {
     /**
      * 查询当前作用域是否已创建追踪器（无副作用，不触发创建）。
      * <p>
-     * 供快照捕获路径（{@link TenantContextAccessor#captureSnapshot()}）使用：
+     * 供快照捕获路径（{@link ExecutionContextAccessor#captureSnapshot()}）使用：
      * <b>仅当</b>追踪器已存在时才允许导出基线（{@code captureBaseline()} 深拷贝），
      * 保证「非 DB 请求永不创建追踪器」的懒语义不被捕获动作破坏。
      *
@@ -173,10 +206,11 @@ public final class TrackingScope {
      * @return 新创建的 ChangeTracker 实例
      */
     private ChangeTracker createTrackerFromBoundBaselineOrPlain(ChangeTrackerProvider provider) {
-        final TenantContextAccessor.ContextSnapshot bound = TenantContextAccessor.boundSnapshot();
+        final ContextSnapshot bound = ExecutionContextAccessor.boundSnapshot();
         if (bound != null && bound.trackingBaseline() != null) {
             return ChangeTracker.fromBaseline(provider.createCapability(), bound.trackingBaseline());
         }
         return provider.create();
     }
+
 }

@@ -1,0 +1,37 @@
+{
+  "timestamp": {
+    "$resolver": "timestamp",
+    "epoch": {
+      "unit": "millis",
+      "rounded": true
+    }
+  },
+  "level": {
+    "$resolver": "level",
+    "field": "name"
+  },
+  "logger": {
+    "$resolver": "logger",
+    "field": "name"
+  },
+  "thread": {
+    "$resolver": "thread",
+    "field": "name"
+  },
+  "message": {
+    "$resolver": "message",
+    "stringified": true
+  },
+  "trace_id": {
+    "$resolver": "mdc",
+    "key": "trace_id"
+  },
+  "span_id": {
+    "$resolver": "mdc",
+    "key": "span_id"
+  },
+  "trace_flags": {
+    "$resolver": "mdc",
+    "key": "trace_flags"
+  }
+}

@@ -3,9 +3,9 @@ package com.nona.inf.persistence.tenant;
 import com.nona.ProjectApplication;
 import com.nona.annotation.ScaffoldGenerated;
 import com.nona.exceptions.BusinessException;
-import com.nona.inf.context.TenantContextAccessor;
+import com.nona.inf.context.ExecutionContextAccessor;
 import com.nona.inf.context.TenantPrivilege;
-import com.nona.inf.context.TrackingContext;
+import com.nona.inf.context.ExecutionContext;
 import com.nona.inf.persistence.repository.jpa.TestGlobalNoteRepository;
 import com.nona.inf.persistence.repository.jpa.TestTenantNoteRepository;
 import jakarta.persistence.EntityManager;
@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 /**
  * 多租户隔离集成测试：写门禁、读过滤、提权作用域与 filter 双保险。
  * <p>
- * 上下文制造形态：租户身份经 {@link TrackingContext#withScope} + holder 写入
+ * 上下文制造形态：租户身份经 {@link ExecutionContext#withScope} + holder 写入
  * （单级解析主通路）；租户切换 = 退出/重入作用域；tenant 缺失场景 = 无作用域
  * （fail-closed，MISSING 占位）；空白 holder 语义与既有行为一致（空白视为缺失）。
  *
@@ -75,8 +75,8 @@ class TenantRepositoryAspectIntegrationTest {
     void tenantScopedQueryShouldBeFilteredAndFailClosedWhenTenantMissing() {
         final LocalDateTime now = LocalDateTime.now();
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t1");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t1");
             TestTenantNotePO t1 = new TestTenantNotePO();
             t1.setId(1L);
             t1.setContent("note-t1");
@@ -86,8 +86,8 @@ class TenantRepositoryAspectIntegrationTest {
             assertThat(t1.getTenantID()).isEqualTo("t1");
         });
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t2");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t2");
             TestTenantNotePO t2 = new TestTenantNotePO();
             t2.setId(2L);
             t2.setContent("note-t2");
@@ -97,8 +97,8 @@ class TenantRepositoryAspectIntegrationTest {
             assertThat(t2.getTenantID()).isEqualTo("t2");
         });
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t1");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t1");
             List<TestTenantNotePO> visibleToT1 = tenantNoteRepository.findAll();
             assertThat(visibleToT1).hasSize(1);
             assertThat(visibleToT1.get(0).getId()).isEqualTo(1L);
@@ -107,9 +107,9 @@ class TenantRepositoryAspectIntegrationTest {
         // tenant 缺失（无作用域）→ fail-closed 返回空
         assertThat(tenantNoteRepository.findAll()).isEmpty();
 
-        TrackingContext.withScope(() -> {
+        ExecutionContext.withScope(() -> {
             // 空白 holder 语义：空白视为缺失（与既有行为一致，继续 fail-closed）
-            TrackingContext.scope().setTenantID("   ");
+            ExecutionContext.scope().setTenantID("   ");
             assertThat(tenantNoteRepository.findAll()).isEmpty();
         });
     }
@@ -121,8 +121,8 @@ class TenantRepositoryAspectIntegrationTest {
     void tenantScopedFindByIdShouldBeFiltered() {
         final LocalDateTime now = LocalDateTime.now();
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t1");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t1");
             TestTenantNotePO t1 = new TestTenantNotePO();
             t1.setId(1L);
             t1.setContent("note-t1");
@@ -131,8 +131,8 @@ class TenantRepositoryAspectIntegrationTest {
             tenantNoteRepository.save(t1);
         });
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t2");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t2");
             TestTenantNotePO t2 = new TestTenantNotePO();
             t2.setId(2L);
             t2.setContent("note-t2");
@@ -141,22 +141,22 @@ class TenantRepositoryAspectIntegrationTest {
             tenantNoteRepository.save(t2);
         });
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t1");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t1");
             assertThat(tenantNoteRepository.findById(2L)).isEmpty();
         });
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t2");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t2");
             assertThat(tenantNoteRepository.findById(2L)).isPresent();
         });
 
         // tenant 缺失（无作用域）→ fail-closed
         assertThat(tenantNoteRepository.findById(1L)).isEmpty();
 
-        TrackingContext.withScope(() -> {
+        ExecutionContext.withScope(() -> {
             // 空白 holder 语义：空白视为缺失（继续 fail-closed）
-            TrackingContext.scope().setTenantID("   ");
+            ExecutionContext.scope().setTenantID("   ");
             assertThat(tenantNoteRepository.findById(1L)).isEmpty();
         });
     }
@@ -168,8 +168,8 @@ class TenantRepositoryAspectIntegrationTest {
     void tenantScopedCountAndExistsShouldBeFiltered() {
         final LocalDateTime now = LocalDateTime.now();
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t1");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t1");
             TestTenantNotePO t1 = new TestTenantNotePO();
             t1.setId(31L);
             t1.setContent("note-t1");
@@ -178,8 +178,8 @@ class TenantRepositoryAspectIntegrationTest {
             tenantNoteRepository.save(t1);
         });
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t2");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t2");
             TestTenantNotePO t2 = new TestTenantNotePO();
             t2.setId(32L);
             t2.setContent("note-t2");
@@ -188,15 +188,15 @@ class TenantRepositoryAspectIntegrationTest {
             tenantNoteRepository.save(t2);
         });
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t1");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t1");
             assertThat(tenantNoteRepository.count()).isEqualTo(1);
             assertThat(tenantNoteRepository.existsById(31L)).isTrue();
             assertThat(tenantNoteRepository.existsById(32L)).isFalse();
         });
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t2");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t2");
             assertThat(tenantNoteRepository.count()).isEqualTo(1);
             assertThat(tenantNoteRepository.existsById(32L)).isTrue();
         });
@@ -229,9 +229,9 @@ class TenantRepositoryAspectIntegrationTest {
         // tenant 缺失（无作用域）→ global 查询不受影响
         assertThat(globalNoteRepository.findAll()).hasSize(1);
 
-        TrackingContext.withScope(() -> {
+        ExecutionContext.withScope(() -> {
             // 空白 holder 语义：空白视为缺失 → global 查询仍不受影响
-            TrackingContext.scope().setTenantID("   ");
+            ExecutionContext.scope().setTenantID("   ");
             assertThat(globalNoteRepository.findAll()).hasSize(1);
         });
     }
@@ -259,8 +259,8 @@ class TenantRepositoryAspectIntegrationTest {
     void tenantScopedWriteShouldFailWhenTenantBlank() {
         final LocalDateTime now = LocalDateTime.now();
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID(" ");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID(" ");
             TestTenantNotePO po = new TestTenantNotePO();
             po.setId(41L);
             po.setContent("illegal");
@@ -278,8 +278,8 @@ class TenantRepositoryAspectIntegrationTest {
     void tenantScopedWriteShouldRejectMismatchedTenant() {
         final LocalDateTime now = LocalDateTime.now();
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t1");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t1");
             TestTenantNotePO po = new TestTenantNotePO();
             po.setId(4L);
             po.setTenantID("t2");
@@ -298,8 +298,8 @@ class TenantRepositoryAspectIntegrationTest {
     void tenantScopedSaveAllShouldInjectTenantID() {
         final LocalDateTime now = LocalDateTime.now();
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t1");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t1");
 
             TestTenantNotePO po1 = new TestTenantNotePO();
             po1.setId(51L);
@@ -329,8 +329,8 @@ class TenantRepositoryAspectIntegrationTest {
     void tenantScopedSaveAllShouldRejectMismatchedTenant() {
         final LocalDateTime now = LocalDateTime.now();
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t1");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t1");
 
             TestTenantNotePO po1 = new TestTenantNotePO();
             po1.setId(61L);
@@ -357,8 +357,8 @@ class TenantRepositoryAspectIntegrationTest {
     void crossTenantShouldBypassTenantIsolationInReadAndBeScopeBound() {
         final LocalDateTime now = LocalDateTime.now();
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t1");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t1");
             TestTenantNotePO t1 = new TestTenantNotePO();
             t1.setId(11L);
             t1.setContent("note-t1");
@@ -367,8 +367,8 @@ class TenantRepositoryAspectIntegrationTest {
             tenantNoteRepository.save(t1);
         });
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t2");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t2");
             TestTenantNotePO t2 = new TestTenantNotePO();
             t2.setId(12L);
             t2.setContent("note-t2");
@@ -393,8 +393,8 @@ class TenantRepositoryAspectIntegrationTest {
     void elevatedScopeShouldExposeAllTenantsInsideAndRestoreIsolationAfterExit() {
         final LocalDateTime now = LocalDateTime.now();
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t1");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t1");
             TestTenantNotePO t1 = new TestTenantNotePO();
             t1.setId(91L);
             t1.setContent("note-t1");
@@ -403,8 +403,8 @@ class TenantRepositoryAspectIntegrationTest {
             tenantNoteRepository.save(t1);
         });
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t2");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t2");
             TestTenantNotePO t2 = new TestTenantNotePO();
             t2.setId(92L);
             t2.setContent("note-t2");
@@ -430,8 +430,8 @@ class TenantRepositoryAspectIntegrationTest {
     void crossTenantFindByIdShouldBypassIsolation() {
         final LocalDateTime now = LocalDateTime.now();
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t1");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t1");
             TestTenantNotePO t1 = new TestTenantNotePO();
             t1.setId(21L);
             t1.setContent("note-t1");
@@ -449,13 +449,13 @@ class TenantRepositoryAspectIntegrationTest {
      */
     @Test
     void crossTenantWriteShouldKeepExplicitTenantID() {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t1");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t1");
             elevatedTenantTestService.saveNoteForTenant("t2", 100L, "note-t2");
         });
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t2");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t2");
             assertThat(tenantNoteRepository.findAll()).hasSize(1);
         });
     }
@@ -469,8 +469,8 @@ class TenantRepositoryAspectIntegrationTest {
      */
     @Test
     void elevatedWriteWithNullTenantShouldFail() {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t1");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t1");
 
             assertThrows(BusinessException.class,
                     () -> elevatedTenantTestService.saveNoteWithoutTenantID(71L, "note-from-admin"));
@@ -485,7 +485,7 @@ class TenantRepositoryAspectIntegrationTest {
     void crossTenantWriteShouldRejectMissingPlaceholderEntityTenant() {
         // 当前 tenant 缺失（无作用域）
         assertThrows(BusinessException.class,
-                () -> elevatedTenantTestService.saveNoteForTenant(TenantContextAccessor.MISSING_TENANT_ID, 81L, "illegal"));
+                () -> elevatedTenantTestService.saveNoteForTenant(ExecutionContextAccessor.MISSING_TENANT_ID, 81L, "illegal"));
         assertThat(elevatedTenantTestService.listAllNotes()).isEmpty();
     }
 
@@ -529,8 +529,8 @@ class TenantRepositoryAspectIntegrationTest {
      */
     @Test
     void sameTransactionElevatedScopeShouldExposeAllTenantsAndRestoreAfterExit() {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("tenant-A");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("tenant-A");
             elevatedTenantTestService.saveNoteForTenant("tenant-A", 101L, "note-A");
             elevatedTenantTestService.saveNoteForTenant("tenant-B", 102L, "note-B");
             assertThat(elevatedTenantTestService.listAllNotes()).hasSize(2);
@@ -563,8 +563,8 @@ class TenantRepositoryAspectIntegrationTest {
     void crossTenantAnnotatedReadShouldExposeAllTenantsAndRestoreIsolation() {
         final LocalDateTime now = LocalDateTime.now();
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t1");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t1");
             TestTenantNotePO t1 = new TestTenantNotePO();
             t1.setId(301L);
             t1.setContent("note-t1");
@@ -573,8 +573,8 @@ class TenantRepositoryAspectIntegrationTest {
             tenantNoteRepository.save(t1);
         });
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t2");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t2");
             TestTenantNotePO t2 = new TestTenantNotePO();
             t2.setId(302L);
             t2.setContent("note-t2");
@@ -583,8 +583,8 @@ class TenantRepositoryAspectIntegrationTest {
             tenantNoteRepository.save(t2);
         });
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t1");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t1");
             assertThat(tenantNoteRepository.findAll()).hasSize(1);
 
             List<TestTenantNotePO> all = crossTenantTestService.listAllNotes();
@@ -600,8 +600,8 @@ class TenantRepositoryAspectIntegrationTest {
      */
     @Test
     void crossTenantAnnotatedReadShouldBypassInStabilizedSession() {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("tenant-A");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("tenant-A");
             elevatedTenantTestService.saveNoteForTenant("tenant-A", 311L, "note-A");
             elevatedTenantTestService.saveNoteForTenant("tenant-B", 312L, "note-B");
 
@@ -624,8 +624,8 @@ class TenantRepositoryAspectIntegrationTest {
     void crossTenantNestedAnnotatedScopesAreSafe() {
         final LocalDateTime now = LocalDateTime.now();
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t1");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t1");
             TestTenantNotePO t1 = new TestTenantNotePO();
             t1.setId(321L);
             t1.setContent("note-t1");
@@ -634,8 +634,8 @@ class TenantRepositoryAspectIntegrationTest {
             tenantNoteRepository.save(t1);
         });
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t2");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t2");
             TestTenantNotePO t2 = new TestTenantNotePO();
             t2.setId(322L);
             t2.setContent("note-t2");
@@ -644,8 +644,8 @@ class TenantRepositoryAspectIntegrationTest {
             tenantNoteRepository.save(t2);
         });
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t1");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t1");
             assertThat(crossTenantTestService.listAllNotesNested()).hasSize(2);
             assertThat(tenantNoteRepository.findAll()).hasSize(1);
         });
@@ -656,8 +656,8 @@ class TenantRepositoryAspectIntegrationTest {
      */
     @Test
     void crossTenantAnnotatedWriteShouldStillRequireElevation() {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t1");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t1");
 
             assertThatThrownBy(() -> crossTenantTestService.saveForeignTenantNote("t2", 331L, "illegal"))
                     .isInstanceOf(BusinessException.class);
@@ -670,8 +670,8 @@ class TenantRepositoryAspectIntegrationTest {
      */
     @Test
     void crossTenantAnnotatedWriteShouldAllowCurrentTenant() {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t1");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t1");
 
             crossTenantTestService.saveCurrentTenantNote(341L, "note-current");
 
@@ -685,8 +685,8 @@ class TenantRepositoryAspectIntegrationTest {
      */
     @Test
     void elevationInsideAnnotatedMethodShouldAllowForeignWrite() {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("t1");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("t1");
 
             crossTenantTestService.saveForeignTenantNoteWithElevation("t2", 351L, "elevated-note");
 
@@ -710,8 +710,8 @@ class TenantRepositoryAspectIntegrationTest {
     @Test
     void sameTransactionElevatedWriteShouldFailFastWhenSessionAlreadyStabilizedAreas() {
         final LocalDateTime now = LocalDateTime.now();
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("tenant-A");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("tenant-A");
 
             assertThatThrownBy(() -> new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
                 entityManager.unwrap(Session.class);
@@ -750,8 +750,8 @@ class TenantRepositoryAspectIntegrationTest {
      */
     @Test
     void sameTransactionBypassWriteShouldSurviveScopeExitFlushClearAndCommit() {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("tenant-A");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("tenant-A");
             final LocalDateTime now = LocalDateTime.now();
 
             new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
@@ -780,8 +780,8 @@ class TenantRepositoryAspectIntegrationTest {
      */
     @Test
     void nonElevatedDeleteWithForeignTenantShouldBeRejected() {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("tenant-A");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("tenant-A");
             final LocalDateTime now = LocalDateTime.now();
 
             final TestTenantNotePO poB = new TestTenantNotePO();
@@ -801,8 +801,8 @@ class TenantRepositoryAspectIntegrationTest {
      */
     @Test
     void nonElevatedDeleteAllWithForeignTenantShouldBeRejected() {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("tenant-A");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("tenant-A");
             final LocalDateTime now = LocalDateTime.now();
 
             final TestTenantNotePO poB = new TestTenantNotePO();
@@ -822,8 +822,8 @@ class TenantRepositoryAspectIntegrationTest {
      */
     @Test
     void nonElevatedDeleteOwnTenantShouldSucceed() {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("tenant-A");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("tenant-A");
             final LocalDateTime now = LocalDateTime.now();
 
             final TestTenantNotePO po = new TestTenantNotePO();
@@ -848,8 +848,8 @@ class TenantRepositoryAspectIntegrationTest {
      */
     @Test
     void elevatedDeleteForeignTenantShouldSucceed() {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("tenant-A");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("tenant-A");
             elevatedTenantTestService.saveNoteForTenant("tenant-B", 504L, "foreign");
             assertThat(elevatedTenantTestService.listAllNotes()).hasSize(1);
 
@@ -873,8 +873,8 @@ class TenantRepositoryAspectIntegrationTest {
      */
     @Test
     void annotatedDeleteWithForeignTenantPoShouldBeRejected() {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("tenant-A");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("tenant-A");
             elevatedTenantTestService.saveNoteForTenant("tenant-B", 505L, "foreign");
 
             final LocalDateTime now = LocalDateTime.now();
@@ -897,8 +897,8 @@ class TenantRepositoryAspectIntegrationTest {
      */
     @Test
     void elevatedWriteWithBlankTenantShouldFail() {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("tenant-A");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("tenant-A");
 
             assertThrows(BusinessException.class,
                     () -> elevatedTenantTestService.saveNoteForTenant("   ", 506L, "blank"));

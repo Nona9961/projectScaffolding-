@@ -4,7 +4,7 @@ import com.nona.ProjectApplication;
 import com.nona.annotation.ScaffoldGenerated;
 import com.nona.exceptions.BusinessException;
 import com.nona.inf.context.TenantPrivilege;
-import com.nona.inf.context.TrackingContext;
+import com.nona.inf.context.ExecutionContext;
 import com.nona.inf.persistence.repository.jpa.TestTenantNoteRepository;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,7 +34,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * </ul>
  * 两类防线：PO 形态 → 门禁判定；ID/无参形态 → filter 兜底。
  * <p>
- * 上下文制造形态：租户身份经 {@link TrackingContext#withScope} + holder 写入
+ * 上下文制造形态：租户身份经 {@link ExecutionContext#withScope} + holder 写入
  * （单级解析主通路），不再依赖请求作用域 bean。
  *
  * @author nona9961
@@ -100,8 +100,8 @@ class TenantDmlBoundaryContractIntegrationTest {
      */
     @Test
     void contractD1_poFormDeleteAllInBatchWithForeignTenantShouldBeRejectedByGate() {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("tenant-A");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("tenant-A");
             elevatedTenantTestService.saveNoteForTenant("tenant-A", 401L, "note-a");
             elevatedTenantTestService.saveNoteForTenant("tenant-B", 411L, "note-b");
             assertThat(elevatedTenantTestService.listAllNotes()).hasSize(2);
@@ -123,8 +123,8 @@ class TenantDmlBoundaryContractIntegrationTest {
      */
     @Test
     void contractD2_noArgDeleteAllInBatchShouldBeFilteredToCurrentTenant() {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("tenant-A");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("tenant-A");
             elevatedTenantTestService.saveNoteForTenant("tenant-A", 602L, "note-a");
             elevatedTenantTestService.saveNoteForTenant("tenant-B", 612L, "note-b");
 
@@ -143,8 +143,8 @@ class TenantDmlBoundaryContractIntegrationTest {
      */
     @Test
     void contractE_mutateTenantIdOnManagedEntityShouldNotChangeOwnership() throws Exception {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("tenant-A");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("tenant-A");
             elevatedTenantTestService.saveNoteForTenant("tenant-B", 421L, "note-b");
 
             new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
@@ -177,8 +177,8 @@ class TenantDmlBoundaryContractIntegrationTest {
     @Test
     @Disabled("红线实证（评测期复现）：作用域退出 auto-flush 会落库挂起写，R5 文档定责（prd）、勿启用")
     void contractF_annotatedReadThenMutateBusinessFieldThenFlush() {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("tenant-A");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("tenant-A");
             elevatedTenantTestService.saveNoteForTenant("tenant-B", 431L, "original-b");
 
             new TransactionTemplate(transactionManager).executeWithoutResult(status -> {

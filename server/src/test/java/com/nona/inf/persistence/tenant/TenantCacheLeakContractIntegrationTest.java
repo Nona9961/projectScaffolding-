@@ -3,7 +3,7 @@ package com.nona.inf.persistence.tenant;
 import com.nona.ProjectApplication;
 import com.nona.annotation.ScaffoldGenerated;
 import com.nona.inf.context.TenantPrivilege;
-import com.nona.inf.context.TrackingContext;
+import com.nona.inf.context.ExecutionContext;
 import com.nona.inf.persistence.repository.jpa.TestTenantNoteRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,7 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>
  * 三变体分别钉住三条放行读路径：A = 注解 findById、B = 注解 findAll、C = 提权读。
  * <p>
- * 上下文制造形态：租户身份经 {@link TrackingContext#withScope} + holder 写入
+ * 上下文制造形态：租户身份经 {@link ExecutionContext#withScope} + holder 写入
  * （单级解析主通路），不再依赖请求作用域 bean。
  *
  * @author nona9961
@@ -80,8 +80,8 @@ class TenantCacheLeakContractIntegrationTest {
      */
     @Test
     void bypassAnnotatedFindByIdThenRestoredFindByIdShouldBeEmpty() {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("tenant-A");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("tenant-A");
             elevatedTenantTestService.saveNoteForTenant("tenant-A", 201L, "note-a");
             elevatedTenantTestService.saveNoteForTenant("tenant-B", 211L, "note-b");
 
@@ -109,8 +109,8 @@ class TenantCacheLeakContractIntegrationTest {
      */
     @Test
     void bypassAnnotatedFindAllThenRestoredFindByIdShouldBeEmpty() {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("tenant-A");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("tenant-A");
             elevatedTenantTestService.saveNoteForTenant("tenant-A", 202L, "note-a2");
             elevatedTenantTestService.saveNoteForTenant("tenant-B", 212L, "note-b2");
 
@@ -136,8 +136,8 @@ class TenantCacheLeakContractIntegrationTest {
      */
     @Test
     void elevatedReadThenRestoredFindByIdShouldBeEmpty() throws Exception {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("tenant-A");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("tenant-A");
             elevatedTenantTestService.saveNoteForTenant("tenant-A", 203L, "note-a3");
             elevatedTenantTestService.saveNoteForTenant("tenant-B", 213L, "note-b3");
 
