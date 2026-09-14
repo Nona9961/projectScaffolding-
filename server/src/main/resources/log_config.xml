@@ -2,35 +2,38 @@
 <Configuration status="WARN">
     <Properties>
         <Property name="LOG_PATTERN">%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n</Property>
-        <Property name="LOG_PATH">./logs</Property>
+        <!-- 部署可用挂载卷目录覆盖；未设置时回落到工作目录下的 ./logs -->
+        <Property name="LOG_PATH">${env:LOG_PATH:-./logs}</Property>
     </Properties>
 
     <Appenders>
-        <!-- 控制台输出（同步） -->
+        <!-- 控制台输出（同步）：保留人类可读文本形态 -->
         <Console name="Console" target="SYSTEM_OUT">
             <PatternLayout pattern="${LOG_PATTERN}"/>
         </Console>
 
-        <!-- 异步文件输出 -->
+        <!-- 文件输出：JSON-OTel 布局 + 时间/大小双触发滚动 + 归档数量与总量双封顶；异步由 AsyncLoggerContextSelector 承担 -->
         <RollingFile name="RollingFileAsync"
                      fileName="${LOG_PATH}/app.log"
                      filePattern="${LOG_PATH}/archive/app-%d{yyyy-MM-dd}-%i.log.gz">
-            <PatternLayout pattern="${LOG_PATTERN}"/>
+            <JsonTemplateLayout eventTemplateUri="classpath:log_event_template.json"/>
             <Policies>
-                <TimeBasedTriggeringPolicy interval="24" modulate="true"/>
+                <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
                 <SizeBasedTriggeringPolicy size="500 MB"/>
             </Policies>
+            <DefaultRolloverStrategy max="30">
+                <Delete basePath="${LOG_PATH}/archive" maxDepth="1">
+                    <IfFileName glob="app-*.log.gz"/>
+                    <IfAccumulatedFileSize exceeds="10 GB"/>
+                </Delete>
+            </DefaultRolloverStrategy>
         </RollingFile>
     </Appenders>
 
     <Loggers>
         <Root level="INFO" includeLocation="true">
             <AppenderRef ref="Console"/>
-        </Root>
-
-        <AsyncLogger name="asyncFileLogger" level="INFO" includeLocation="true">
             <AppenderRef ref="RollingFileAsync"/>
-            <property name="batchSize">100</property>
-        </AsyncLogger>
+        </Root>
     </Loggers>
 </Configuration>
