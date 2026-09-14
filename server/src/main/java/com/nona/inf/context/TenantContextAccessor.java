@@ -4,6 +4,7 @@ import com.nona.annotation.ScaffoldGenerated;
 import com.nona.changeTracking.domain.model.tracking.BaselineSnapshot;
 import com.nona.tenant.TenantWriteGate;
 import jakarta.annotation.Nullable;
+import org.apache.logging.log4j.ThreadContext;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -52,12 +53,32 @@ public class TenantContextAccessor {
      * <p>
      * 跨线程传播的统一入口：提交线程经 {@link #captureSnapshot()} 捕获，worker 线程以本方法
      * 包裹任务体。不调用本方法时线程即无回退（fail-closed）。
+     * <p>
+     * MDC 三键重放：进入时快照当前线程取值，快照携带跟踪身份
+     * （{@link ContextSnapshot#traceIdentity()} 非 {@code null}）时三键整体覆盖；
+     * 退出（含异常路径）恢复入口状态。快照无跟踪身份时不清空、不覆盖——继承线程当前视角。
      *
      * @param snapshot 要绑定的快照；不得为 {@code null}（无需传播时不要调用本方法）
      * @param action   绑定作用域内执行的操作
      */
     public static void withSnapshot(ContextSnapshot snapshot, Runnable action) {
-        ScopedValue.where(SNAPSHOT, snapshot).run(action);
+        final String entryTraceId = ThreadContext.get(TrackingScope.MDC_TRACE_ID);
+        final String entrySpanId = ThreadContext.get(TrackingScope.MDC_SPAN_ID);
+        final String entryTraceFlags = ThreadContext.get(TrackingScope.MDC_TRACE_FLAGS);
+        final TrackingScope.TraceIdentity traceIdentity = snapshot.traceIdentity();
+        if (traceIdentity != null) {
+            ThreadContext.put(TrackingScope.MDC_TRACE_ID, traceIdentity.traceId());
+            ThreadContext.put(TrackingScope.MDC_SPAN_ID, traceIdentity.spanId());
+            ThreadContext.put(TrackingScope.MDC_TRACE_FLAGS, traceIdentity.traceFlags());
+        }
+        try {
+            ScopedValue.where(SNAPSHOT, snapshot).run(action);
+        }
+        finally {
+            restoreMdcKey(TrackingScope.MDC_TRACE_ID, entryTraceId);
+            restoreMdcKey(TrackingScope.MDC_SPAN_ID, entrySpanId);
+            restoreMdcKey(TrackingScope.MDC_TRACE_FLAGS, entryTraceFlags);
+        }
     }
 
     /**
@@ -72,6 +93,20 @@ public class TenantContextAccessor {
     @Nullable
     static ContextSnapshot boundSnapshot() {
         return SNAPSHOT.isBound() ? SNAPSHOT.get() : null;
+    }
+
+    /**
+     * 恢复单个 MDC 键到进入绑定作用域时的状态：入口有值 → put 回；入口缺失 → remove。
+     *
+     * @param key        MDC 键名
+     * @param entryValue 进入作用域时的取值；入口缺失时为 {@code null}
+     */
+    private static void restoreMdcKey(String key, @Nullable String entryValue) {
+        if (entryValue == null) {
+            ThreadContext.remove(key);
+            return;
+        }
+        ThreadContext.put(key, entryValue);
     }
 
     /**
@@ -123,7 +158,26 @@ public class TenantContextAccessor {
     }
 
     /**
-     * 捕获当前上下文身份三元组（tenantID / role / identity）与追踪基线，供跨线程传播。
+     * 整体解析：holder 跟踪身份非空才取（不做字段级拼接）；否则回退 boundSnapshot；
+     * 两源皆无 → {@code null}。
+     */
+    @Nullable
+    private static TrackingScope.TraceIdentity traceIdentityOrNull(
+            @Nullable TrackingScope scope, @Nullable ContextSnapshot bound) {
+        if (scope != null) {
+            final TrackingScope.TraceIdentity holderIdentity = scope.getTraceIdentity();
+            if (holderIdentity != null) {
+                return holderIdentity;
+            }
+        }
+        if (bound != null) {
+            return bound.traceIdentity();
+        }
+        return null;
+    }
+
+    /**
+     * 捕获当前上下文身份三元组（tenantID / role / identity）、追踪基线与跟踪身份，供跨线程传播。
      * <p>
      * 解析顺序：{@link TrackingContext#scope()} 持有者优先——无作用域时读当前线程已绑定快照
      * （嵌套异步：worker 内再派发继承外层视角）——两者皆无返回三元组全空快照。
@@ -133,8 +187,12 @@ public class TenantContextAccessor {
      * {@code captureBaseline()} 导出深拷贝基线（不得触发创建：非 DB 请求零追踪开销的
      * 懒语义不被捕获动作破坏）；无作用域或尚无追踪器时基线为 {@code null}（合法态，
      * worker 侧走普通创建路径）。
+     * <p>
+     * <strong>跟踪身份</strong>：整体捕获（三元组原子，无字段级回退）——作用域持有者
+     * （{@link TrackingScope#getTraceIdentity()}）非空取持有者，否则回退已绑定快照的
+     * 跟踪身份；两源皆无 → {@code null}（合法态：无 trace 身份）。
      *
-     * @return 当前上下文快照（三元组 + 可能存在的追踪基线）；三元组按字段级解析：
+     * @return 当前上下文快照（三元组 + 可能存在的追踪基线与跟踪身份）；三元组按字段级解析：
      *         holder 有值取 holder，否则回退 boundSnapshot，两源皆无 → {@code null}
      *         （无作用域且无追踪器时返回全空快照）
      */
@@ -150,7 +208,8 @@ public class TenantContextAccessor {
                 tenantIdOrNull(scope, bound),
                 roleOrNull(scope, bound),
                 identityOrNull(scope, bound),
-                trackingBaseline
+                trackingBaseline,
+                traceIdentityOrNull(scope, bound)
         );
     }
 
@@ -224,18 +283,39 @@ public class TenantContextAccessor {
      * @param role             角色列表；可能为 null
      * @param identity         请求者身份；可能为 null
      * @param trackingBaseline 追踪基线（深拷贝）；无追踪器时为 null
+     * @param traceIdentity    跟踪身份（trace_id / span_id / trace_flags 三元组）；
+     *                         无跟踪身份时为 null（三键整体缺失，无部分三元组）
      */
     public record ContextSnapshot(
             @Nullable String tenantID,
             @Nullable List<String> role,
             @Nullable String identity,
-            @Nullable BaselineSnapshot trackingBaseline
+            @Nullable BaselineSnapshot trackingBaseline,
+            @Nullable TrackingScope.TraceIdentity traceIdentity
     ) {
-        /** 表示缺失 / 已清除上下文的哨兵快照（三元组与追踪基线均为空）。 */
+        /** 表示缺失 / 已清除上下文的哨兵快照（三元组、追踪基线与跟踪身份均为空）。 */
         public static final ContextSnapshot EMPTY = new ContextSnapshot(null, null, null, null);
 
         /**
-         * 兼容便捷构造器：仅三元组（追踪基线缺省为 {@code null}）。
+         * 兼容便捷构造器：三元组 + 追踪基线（跟踪身份缺省为 {@code null}）。
+         * <p>
+         * 保留以兼容既有调用形态；新增跟踪身份槽后旧构造器语义不变（无跟踪身份）。
+         *
+         * @param tenantID         租户 ID；可能为 null
+         * @param role             角色列表；可能为 null
+         * @param identity         请求者身份；可能为 null
+         * @param trackingBaseline 追踪基线（深拷贝）；无追踪器时为 null
+         */
+        public ContextSnapshot(
+                @Nullable String tenantID,
+                @Nullable List<String> role,
+                @Nullable String identity,
+                @Nullable BaselineSnapshot trackingBaseline) {
+            this(tenantID, role, identity, trackingBaseline, null);
+        }
+
+        /**
+         * 兼容便捷构造器：仅三元组（追踪基线与跟踪身份缺省为 {@code null}）。
          * <p>
          * 保留以兼容既有调用形态（传播槽结构不变）；基线缺省语义 =
          * 「无追踪器 / 不传播基线」。

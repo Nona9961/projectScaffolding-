@@ -4,6 +4,7 @@ import com.nona.annotation.ScaffoldGenerated;
 import com.nona.changeTracking.domain.model.tracking.ChangeTracker;
 import com.nona.inf.persistence.tracking.ChangeTrackerProvider;
 import jakarta.annotation.Nullable;
+import org.apache.logging.log4j.ThreadContext;
 
 import java.util.List;
 import java.util.Map;
@@ -21,6 +22,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * <ul>
  *   <li>三元组（tenantID / role / identity）：消费者授权过滤器的迁移写入目标
  *       （原 {@code threadContext.setX} 路径改为本持有者 setter，须运行在 {@link TrackingContext#withScope} 作用域内）</li>
+ *   <li>跟踪身份（trace_id / span_id / trace_flags，{@link TraceIdentity}）：写入即原子同步
+ *       MDC 三键（{@link #setTraceIdentity(TraceIdentity)}），日志布局据此输出 trace 字段</li>
  *   <li>{@code snapshots}：根对象注册表（{@code DifferRepository.isTracked} 读、快照登记写）</li>
  *   <li>{@code tracker}：懒创建——首次 {@link #getOrCreateTracker} 时才创建并留存，
  *       非 DB 访问路径永不创建；异步 worker 场景（SNAPSHOT 槽携带非空
@@ -32,6 +35,21 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @ScaffoldGenerated
 public final class TrackingScope {
+
+    /**
+     * MDC 键：W3C trace-id（日志布局字段契约，不得改名）。
+     */
+    static final String MDC_TRACE_ID = "trace_id";
+
+    /**
+     * MDC 键：W3C span-id（日志布局字段契约，不得改名）。
+     */
+    static final String MDC_SPAN_ID = "span_id";
+
+    /**
+     * MDC 键：W3C trace-flags（日志布局字段契约，不得改名）。
+     */
+    static final String MDC_TRACE_FLAGS = "trace_flags";
 
     /**
      * 当前租户 ID
@@ -47,6 +65,13 @@ public final class TrackingScope {
      * 请求者身份标识（token / userId / apiKey 等）
      */
     private String identity;
+
+    /**
+     * 当前作用域的跟踪身份（trace_id / span_id / trace_flags）；未写入时为 {@code null}。
+     * <p>
+     * 整体写入 / 整体清除：写入即同步 MDC 三键，不存在部分更新窗口。
+     */
+    private TraceIdentity traceIdentity;
 
     /**
      * 根对象快照注册表（key 为根对象 ID）。
@@ -116,6 +141,38 @@ public final class TrackingScope {
     }
 
     /**
+     * 获取当前作用域的跟踪身份。
+     *
+     * @return 跟踪身份；未写入时为 {@code null}
+     */
+    @Nullable
+    public TraceIdentity getTraceIdentity() {
+        return traceIdentity;
+    }
+
+    /**
+     * 设置当前作用域的跟踪身份，并原子同步 MDC 三键（{@code trace_id} / {@code span_id} /
+     * {@code trace_flags}）：非 {@code null} → 三键整体 put；{@code null} → 三键整体 remove。
+     * <p>
+     * 与三元组 setter 同一写入路径（须运行在 {@link TrackingContext#withScope} 作用域内）。
+     * 整体写入是 OTel span context 语义——部分更新的三元组构成不一致窗口。
+     *
+     * @param traceIdentity 跟踪身份；传 {@code null} 表示清除（三键整体移除）
+     */
+    public void setTraceIdentity(@Nullable TraceIdentity traceIdentity) {
+        this.traceIdentity = traceIdentity;
+        if (traceIdentity == null) {
+            ThreadContext.remove(MDC_TRACE_ID);
+            ThreadContext.remove(MDC_SPAN_ID);
+            ThreadContext.remove(MDC_TRACE_FLAGS);
+            return;
+        }
+        ThreadContext.put(MDC_TRACE_ID, traceIdentity.traceId());
+        ThreadContext.put(MDC_SPAN_ID, traceIdentity.spanId());
+        ThreadContext.put(MDC_TRACE_FLAGS, traceIdentity.traceFlags());
+    }
+
+    /**
      * 获取根对象快照注册表（返回内部集合，允许原地读写）。
      *
      * @return 根对象 ID → 根对象 的注册表
@@ -178,5 +235,31 @@ public final class TrackingScope {
             return ChangeTracker.fromBaseline(provider.createCapability(), bound.trackingBaseline());
         }
         return provider.create();
+    }
+
+    /**
+     * 跟踪身份值对象（{@code trace_id} / {@code span_id} / {@code trace_flags} 三元组）。
+     * <p>
+     * 三个 MDC 键必须整体同步：部分更新的三元组构成不一致窗口（OpenTelemetry span
+     * context 语义——trace 身份要么完整存在，要么完全不存在）。因此字段非空：
+     * 「不存在」由整个值对象为 {@code null} 表达（{@link #setTraceIdentity(TraceIdentity)}
+     * 传 {@code null} 即清除三键），构造时拒绝 null 字段——不存在「半个跟踪身份」。
+     *
+     * @param traceId    W3C trace-id（MDC 键 {@code trace_id}）；不得为 {@code null}
+     * @param spanId     W3C span-id（MDC 键 {@code span_id}）；不得为 {@code null}
+     * @param traceFlags W3C trace-flags（MDC 键 {@code trace_flags}）；不得为 {@code null}
+     */
+    public record TraceIdentity(String traceId, String spanId, String traceFlags) {
+
+        /**
+         * 紧凑构造器：三分量非空——部分三元组构成不一致窗口，构造即拒绝。
+         *
+         * @throws NullPointerException 任一分量为 {@code null} 时抛出
+         */
+        public TraceIdentity {
+            Objects.requireNonNull(traceId, "traceId must not be null");
+            Objects.requireNonNull(spanId, "spanId must not be null");
+            Objects.requireNonNull(traceFlags, "traceFlags must not be null");
+        }
     }
 }

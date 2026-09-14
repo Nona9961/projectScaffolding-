@@ -4,6 +4,7 @@ import com.nona.annotation.ScaffoldGenerated;
 import com.nona.changeTracking.domain.model.tracking.ChangeTracker;
 import com.nona.inf.persistence.tracking.ChangeTrackerProvider;
 import jakarta.annotation.Nullable;
+import org.apache.logging.log4j.ThreadContext;
 
 import java.util.Objects;
 
@@ -39,13 +40,27 @@ public final class TrackingContext {
      * 在新建的跟踪作用域内执行 {@code action}：绑定新的空 {@link TrackingScope} 持有者，
      * 退出（含异常路径）自动恢复 unbound。
      * <p>
+     * MDC 三键（{@code trace_id} / {@code span_id} / {@code trace_flags}）按栈语义管理：
+     * 进入时快照当前线程取值（不清空——未写入跟踪身份的内层作用域继承外层视角），
+     * 退出（含异常路径）恢复入口状态——作用域边界即 MDC 生命周期边界，池化线程复用无残留。
+     * <p>
      * 所有请求 / 任务入口（HTTP 过滤器、异步任务装饰器等）必须以本方法包裹任务体；
      * 不包裹时线程即为未绑定（fail-closed）。
      *
      * @param action 绑定作用域内执行的操作
      */
     public static void withScope(Runnable action) {
-        ScopedValue.where(TRACKING, new TrackingScope()).run(action);
+        final String entryTraceId = ThreadContext.get(TrackingScope.MDC_TRACE_ID);
+        final String entrySpanId = ThreadContext.get(TrackingScope.MDC_SPAN_ID);
+        final String entryTraceFlags = ThreadContext.get(TrackingScope.MDC_TRACE_FLAGS);
+        try {
+            ScopedValue.where(TRACKING, new TrackingScope()).run(action);
+        }
+        finally {
+            restoreMdcKey(TrackingScope.MDC_TRACE_ID, entryTraceId);
+            restoreMdcKey(TrackingScope.MDC_SPAN_ID, entrySpanId);
+            restoreMdcKey(TrackingScope.MDC_TRACE_FLAGS, entryTraceFlags);
+        }
     }
 
     /**
@@ -77,5 +92,19 @@ public final class TrackingContext {
                     "未绑定跟踪作用域：请经入口组件（TrackingFilter / 任务传播装饰器）以 TrackingContext.withScope 包裹任务体后调用");
         }
         return current.getOrCreateTracker(provider);
+    }
+
+    /**
+     * 恢复单个 MDC 键到进入作用域时的状态：入口有值 → put 回；入口缺失 → remove。
+     *
+     * @param key        MDC 键名
+     * @param entryValue 进入作用域时的取值；入口缺失时为 {@code null}
+     */
+    private static void restoreMdcKey(String key, @Nullable String entryValue) {
+        if (entryValue == null) {
+            ThreadContext.remove(key);
+            return;
+        }
+        ThreadContext.put(key, entryValue);
     }
 }
