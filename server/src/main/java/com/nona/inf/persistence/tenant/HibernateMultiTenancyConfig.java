@@ -10,7 +10,7 @@ import org.springframework.context.annotation.Configuration;
 import java.util.Map;
 
 /**
- * Hibernate 多租户配置：注册 {@link TrackingContextTenantIdentifierResolver} 到 Hibernate 属性中。
+ * Hibernate 多租户配置：注册 {@link ExecutionContextTenantIdentifierResolver} 到 Hibernate 属性中。
  *
  * @author nona9961
  */
@@ -19,7 +19,7 @@ import java.util.Map;
 @ScaffoldGenerated
 public class HibernateMultiTenancyConfig {
 
-    private final TrackingContextTenantIdentifierResolver tenantIdentifierResolver;
+    private final ExecutionContextTenantIdentifierResolver tenantIdentifierResolver;
 
     /**
      * 注册 Hibernate 的 tenant identifier resolver，用于 discriminator multi-tenancy（{@code @TenantId}）。

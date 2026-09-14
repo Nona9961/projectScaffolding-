@@ -12,16 +12,16 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 每作用域可变的跟踪上下文持有者（per-scope holder，非 Spring bean）。
+ * 每作用域可变的执行上下文持有者（per-scope holder，非 Spring bean）。
  * <p>
- * 由 {@link TrackingContext#withScope(Runnable)} 创建并作为 {@link ScopedValue} 的值绑定，
+ * 由 {@link ExecutionContext#withScope(Runnable)} 创建并作为 {@link ScopedValue} 的值绑定，
  * 绑定期间引用稳定：作用域内对字段的写入为单线程操作（JEP 506「不可变或同步」之「或」分支）。
  * 持有者<b>永不跨线程共享</b>——跨线程边界一律以不可变快照传播。
  * <p>
  * 承载内容：
  * <ul>
  *   <li>三元组（tenantID / role / identity）：消费者授权过滤器的迁移写入目标
- *       （原 {@code threadContext.setX} 路径改为本持有者 setter，须运行在 {@link TrackingContext#withScope} 作用域内）</li>
+ *       （原 {@code threadContext.setX} 路径改为本持有者 setter，须运行在 {@link ExecutionContext#withScope} 作用域内）</li>
  *   <li>跟踪身份（trace_id / span_id / trace_flags，{@link TraceIdentity}）：写入即原子同步
  *       MDC 三键（{@link #setTraceIdentity(TraceIdentity)}），日志布局据此输出 trace 字段</li>
  *   <li>{@code snapshots}：根对象注册表（{@code DifferRepository.isTracked} 读、快照登记写）</li>
@@ -34,7 +34,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * @author nona9961
  */
 @ScaffoldGenerated
-public final class TrackingScope {
+public final class ExecutionContextState {
 
     /**
      * MDC 键：W3C trace-id（日志布局字段契约，不得改名）。
@@ -154,7 +154,7 @@ public final class TrackingScope {
      * 设置当前作用域的跟踪身份，并原子同步 MDC 三键（{@code trace_id} / {@code span_id} /
      * {@code trace_flags}）：非 {@code null} → 三键整体 put；{@code null} → 三键整体 remove。
      * <p>
-     * 与三元组 setter 同一写入路径（须运行在 {@link TrackingContext#withScope} 作用域内）。
+     * 与三元组 setter 同一写入路径（须运行在 {@link ExecutionContext#withScope} 作用域内）。
      * 整体写入是 OTel span context 语义——部分更新的三元组构成不一致窗口。
      *
      * @param traceIdentity 跟踪身份；传 {@code null} 表示清除（三键整体移除）
@@ -185,7 +185,7 @@ public final class TrackingScope {
      * 获取当前作用域的变更追踪器；尚未创建时懒创建并留存。
      * <p>
      * <strong>首次创建钩子</strong>：创建时刻检查 SNAPSHOT 槽已绑定快照
-     * （{@link TenantContextAccessor#boundSnapshot()}）——快照携带非空
+     * （{@link ExecutionContextAccessor#boundSnapshot()}）——快照携带非空
      * {@code trackingBaseline}（异步 worker：提交线程已导出基线）时经
      * {@code ChangeTracker.fromBaseline(provider.createCapability(), baseline)} 从基线重建，
      * <b>不重新脱水</b>（对已修改实体重新 track 会得到空 diff，变更静默丢失）；
@@ -212,7 +212,7 @@ public final class TrackingScope {
     /**
      * 查询当前作用域是否已创建追踪器（无副作用，不触发创建）。
      * <p>
-     * 供快照捕获路径（{@link TenantContextAccessor#captureSnapshot()}）使用：
+     * 供快照捕获路径（{@link ExecutionContextAccessor#captureSnapshot()}）使用：
      * <b>仅当</b>追踪器已存在时才允许导出基线（{@code captureBaseline()} 深拷贝），
      * 保证「非 DB 请求永不创建追踪器」的懒语义不被捕获动作破坏。
      *
@@ -230,36 +230,11 @@ public final class TrackingScope {
      * @return 新创建的 ChangeTracker 实例
      */
     private ChangeTracker createTrackerFromBoundBaselineOrPlain(ChangeTrackerProvider provider) {
-        final TenantContextAccessor.ContextSnapshot bound = TenantContextAccessor.boundSnapshot();
+        final ContextSnapshot bound = ExecutionContextAccessor.boundSnapshot();
         if (bound != null && bound.trackingBaseline() != null) {
             return ChangeTracker.fromBaseline(provider.createCapability(), bound.trackingBaseline());
         }
         return provider.create();
     }
 
-    /**
-     * 跟踪身份值对象（{@code trace_id} / {@code span_id} / {@code trace_flags} 三元组）。
-     * <p>
-     * 三个 MDC 键必须整体同步：部分更新的三元组构成不一致窗口（OpenTelemetry span
-     * context 语义——trace 身份要么完整存在，要么完全不存在）。因此字段非空：
-     * 「不存在」由整个值对象为 {@code null} 表达（{@link #setTraceIdentity(TraceIdentity)}
-     * 传 {@code null} 即清除三键），构造时拒绝 null 字段——不存在「半个跟踪身份」。
-     *
-     * @param traceId    W3C trace-id（MDC 键 {@code trace_id}）；不得为 {@code null}
-     * @param spanId     W3C span-id（MDC 键 {@code span_id}）；不得为 {@code null}
-     * @param traceFlags W3C trace-flags（MDC 键 {@code trace_flags}）；不得为 {@code null}
-     */
-    public record TraceIdentity(String traceId, String spanId, String traceFlags) {
-
-        /**
-         * 紧凑构造器：三分量非空——部分三元组构成不一致窗口，构造即拒绝。
-         *
-         * @throws NullPointerException 任一分量为 {@code null} 时抛出
-         */
-        public TraceIdentity {
-            Objects.requireNonNull(traceId, "traceId must not be null");
-            Objects.requireNonNull(spanId, "spanId must not be null");
-            Objects.requireNonNull(traceFlags, "traceFlags must not be null");
-        }
-    }
 }

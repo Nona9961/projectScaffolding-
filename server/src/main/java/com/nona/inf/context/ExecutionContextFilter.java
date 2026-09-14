@@ -13,12 +13,12 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 
 /**
- * HTTP 请求入口过滤器：以 {@link TrackingContext#withScope(Runnable)} 包裹整个请求链路。
+ * HTTP 请求入口过滤器：以 {@link ExecutionContext#withScope(Runnable)} 包裹整个请求链路。
  * <p>
  * <strong>职责</strong>：
  * <ol>
- *   <li>任何请求（含无 DB 访问路径）先绑定空 {@link TrackingScope} 持有者——作用域内
- *       {@link TrackingContext#tracker} 懒创建、持有者三元组经消费者授权过滤器写入；
+ *   <li>任何请求（含无 DB 访问路径）先绑定空 {@link ExecutionContextState} 持有者——作用域内
+ *       {@link ExecutionContext#tracker} 懒创建、持有者三元组经消费者授权过滤器写入；
  *       随后业务过滤器的 tenant 读取与 {@code DifferRepository} 追踪均落在同一作用域内</li>
  *   <li>作用域退出（包含异常路径）自动恢复 unbound（JEP 506 词法作用域语义）——
  *       池化线程复用无残留，无需手动清理</li>
@@ -29,22 +29,22 @@ import java.io.IOException;
  * chain 的编排变化，可复核调整该数值。
  * <p>
  * fail-closed 对照：不经过本过滤器（或异步传播装饰器）绑定的线程，调用
- * {@link TrackingContext#tracker} 抛 {@link IllegalStateException}——语义由
- * {@link TrackingContext} 保证，本过滤器只负责「绑定」。
+ * {@link ExecutionContext#tracker} 抛 {@link IllegalStateException}——语义由
+ * {@link ExecutionContext} 保证，本过滤器只负责「绑定」。
  *
  * @author nona9961
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @ScaffoldGenerated
-public class TrackingFilter extends OncePerRequestFilter {
+public class ExecutionContextFilter extends OncePerRequestFilter {
 
     /**
-     * 以 {@code TrackingContext.withScope(() -> filterChain.doFilter(request, response))}
+     * 以 {@code ExecutionContext.withScope(() -> filterChain.doFilter(request, response))}
      * 包裹整个过滤链——请求先绑定空 holder，链路退出（含异常）自动 unbound。
      * <p>
      * <strong>异常形状</strong>：{@code filterChain.doFilter} 抛 {@link ServletException} /
-     * {@link IOException}（受检），而 {@link TrackingContext#withScope(Runnable)} 接受
+     * {@link IOException}（受检），而 {@link ExecutionContext#withScope(Runnable)} 接受
      * {@link Runnable}（不声明受检异常）——链路受检异常先包入私有
      * {@link UncheckedChainException}（作用域内原样穿过、自动恢复 unbound），
      * 本方法出口按原始类型解包原样传播；链路内的运行时异常不经包装、原样传播
@@ -52,7 +52,7 @@ public class TrackingFilter extends OncePerRequestFilter {
      *
      * @param request     当前 HTTP 请求
      * @param response    当前 HTTP 响应
-     * @param filterChain 剩余过滤链；在 {@code TrackingContext.withScope} 作用域内执行
+     * @param filterChain 剩余过滤链；在 {@code ExecutionContext.withScope} 作用域内执行
      * @throws ServletException 链路内的 Servlet 异常（原样传播，作用域自动退出）
      * @throws IOException      链路内的 IO 异常（原样传播，作用域自动退出）
      */
@@ -60,7 +60,7 @@ public class TrackingFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         try {
-            TrackingContext.withScope(() -> {
+            ExecutionContext.withScope(() -> {
                 try {
                     filterChain.doFilter(request, response);
                 } catch (ServletException | IOException e) {

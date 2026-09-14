@@ -2,8 +2,8 @@
 
 > 面向脚手架使用者的操作手册：怎么做、什么不能做、做错了是什么现象。
 > 技术事实以仓库当前实现为准。规则层在 common（纯函数、存储无关）：`TenantWriteGate` /
-> `TenantScopeExitHandler`；载体层在 server：`TenantContextAccessor` / `TenantPrivilege` /
-> `TrackingContextTenantIdentifierResolver` / `TenantRepositoryAspect` /
+> `TenantScopeExitHandler`；载体层在 server：`ExecutionContextAccessor` / `TenantPrivilege` /
+> `ExecutionContextTenantIdentifierResolver` / `TenantRepositoryAspect` /
 > `JpaTenantScopeExitHandler` / `TenantReadIsolationAdapter`。
 
 ---
@@ -29,7 +29,7 @@
 | | 身份三元组 | 提权/读放行状态 |
 |---|-----------|----------|
 | 内容 | `tenantID` / `role` / `identity` | 是否处于提权 / 读放行作用域（布尔） |
-| 载体 | `TrackingContext` / `TrackingScope`（单级 ScopedValue 主通道，holder 由入口组件绑定，鉴权层在作用域内写入）+
+| 载体 | `ExecutionContext` / `ExecutionContextState`（单级 ScopedValue 主通道，holder 由入口组件绑定，鉴权层在作用域内写入）+
   异步快照 `ContextSnapshot`（ScopedValue 回退槽，作用域自动恢复） | `TenantPrivilege` 内的两个 `ScopedValue<Boolean>`
   （`ELEVATED` / `READ_BYPASS`） |
 | 跟随谁 | **随人走**：请求带着它流转，
@@ -70,12 +70,12 @@
 `_tenantId`（条件 `tenant_id = :tenantId`），参数来自 resolver：
 
 ```java
-// TrackingContextTenantIdentifierResolver —— session 打开的瞬间调用一次
+// ExecutionContextTenantIdentifierResolver —— session 打开的瞬间调用一次
 public String resolveCurrentTenantIdentifier() {
     if (tenantPrivilege.isAnyReadBypassActive()) {
         return ROOT_TENANT_ID;          // 提权或读放行 → root 视角，不启用过滤
     }
-    return tenantContextAccessor.getTenantIDOrMissing();  // 缺失 → __MISSING_TENANT__（fail-closed）
+    return executionContextAccessor.getTenantIDOrMissing();  // 缺失 → __MISSING_TENANT__（fail-closed）
 }
 ```
 
@@ -191,8 +191,8 @@ po.setTenantID("t2"); /* 当前 t1 */ repo.save(po);
 // ❌ BusinessException: cross-tenant write is forbidden. currentTenant=t1, entityTenant=t2
 ```
 
-前置约束：**当前视角必须有租户**（I5）。在跟踪作用域内把持有者租户写空或写空白
-（`TrackingContext.scope().setTenantID(null)`，须运行在入口组件绑定的作用域内）时保存直接抛
+前置约束：**当前视角必须有租户**（I5）。在执行作用域内把持有者租户写空或写空白
+（`ExecutionContext.scope().setTenantID(null)`，须运行在入口组件绑定的作用域内）时保存直接抛
 `BusinessException: tenantID is required for tenant-scoped write`。
 
 ### 3.2 写操作形态分类：判定与参数有关，与操作方法名无关
@@ -268,7 +268,7 @@ insert 时 Hibernate 写侧校验（`@TenantId` assigned-id）与门禁对齐：
 ### 4.1 API 与正确示例
 
 `TenantPrivilege` 是 Spring 单例 bean，**通过构造注入使用**（作用域退出处理器与
-租户上下文访问器由容器注入，不同容器各自收集、互不覆盖）：
+执行上下文访问器由容器注入，不同容器各自收集、互不覆盖）：
 
 ```java
 @Service
@@ -321,7 +321,7 @@ C 端跨店下单是典型形态：买家上下文**没有租户**，一次订�
 ```
 
 `alreadyActive=true` 表示嵌套提权，review 时应重点追问必要性；`identity` / `tenantID` 为
-进入提权时的调用者身份与当前租户（经注入的 `TenantContextAccessor` 解析；不可用时显示
+进入提权时的调用者身份与当前租户（经注入的 `ExecutionContextAccessor` 解析；不可用时显示
 `unknown`）。生产环境建议对该日志关键字配置采集告警，做到「谁在什么时候进了提权」可追溯。
 
 ### 4.4 边界行为
@@ -442,14 +442,14 @@ flush 就不落库」；「注解内读到的实体仅供读取」（红线④�
 
 ### 5.1 快照传播：身份三元组 + 追踪基线
 
-`RequestContextPropagatingTaskDecorator` 在提交线程捕获 `ContextSnapshot`（身份三元组 +
+`ContextPropagatingTaskDecorator` 在提交线程捕获 `ContextSnapshot`（身份三元组 +
 追踪基线——深拷贝，仅当提交线程已创建追踪器时经 `captureBaseline()` 导出，不触发创建），
 worker 线程以**双槽嵌套绑定**执行任务：外层 `withSnapshot` 绑定三元组回退视角，内层
-`TrackingContext.withScope` 建立 worker 独立跟踪作用域（首次使用追踪器时从基线重建，
+`ExecutionContext.withScope` 建立 worker 独立执行作用域（首次使用追踪器时从基线重建，
 不重新脱水）——作用域退出（含异常路径）自动恢复 unbound，无需手动清理：
 
 ```java
-executor.setTaskDecorator(new RequestContextPropagatingTaskDecorator(tenantContextAccessor));
+executor.setTaskDecorator(new ContextPropagatingTaskDecorator(executionContextAccessor));
 ```
 
 注意：装饰器需**逐 executor 手动绑定**，无自动配置。没绑定的线程池 = worker 无身份上下文 =
@@ -482,14 +482,14 @@ CompletableFuture.runAsync(() ->
 ### 5.3 手动使用快照：双槽包裹任务
 
 不经 TaskDecorator 的自管线程（原生 `ExecutorService`、虚拟线程等）手动传播时，
-用 `withSnapshot` 外层 + `TrackingContext.withScope` 内层声明绑定作用域——作用域退出
+用 `withSnapshot` 外层 + `ExecutionContext.withScope` 内层声明绑定作用域——作用域退出
 （含异常路径）自动恢复，无需配对清理：
 
 ```java
-// ✅ 标准传播模板（双槽：回退槽 + 跟踪作用域）
-TenantContextAccessor.ContextSnapshot snapshot = accessor.captureSnapshot();
-executor.submit(() -> TenantContextAccessor.withSnapshot(snapshot,
-        () -> TrackingContext.withScope(() -> doWork())));
+// ✅ 标准传播模板（双槽：回退槽 + 执行作用域）
+ContextSnapshot snapshot = accessor.captureSnapshot();
+executor.submit(() -> ExecutionContextAccessor.withSnapshot(snapshot,
+        () -> ExecutionContext.withScope(() -> doWork())));
 ```
 
 ---
@@ -501,8 +501,8 @@ executor.submit(() -> TenantContextAccessor.withSnapshot(snapshot,
 （Global 表不受影响）。这是设计行为，不是 bug。
 
 ```java
-TrackingContext.withScope(() -> {
-    TrackingContext.scope().setTenantID(null);   // 作用域内写空租户（模拟上下文缺失）
+ExecutionContext.withScope(() -> {
+    ExecutionContext.scope().setTenantID(null);   // 作用域内写空租户（模拟上下文缺失）
     noteRepository.findAll();      // []     ← 库里有数据也查不到
     noteRepository.findById(1L);   // Optional.empty
     noteRepository.count();        // 0
@@ -513,10 +513,10 @@ TrackingContext.withScope(() -> {
 
 排查顺序：
 
-1. 当前线程 `tenantContextAccessor.getTenantID()` 返回什么？
+1. 当前线程 `executionContextAccessor.getTenantID()` 返回什么？
 2. 若是异步 worker：executor 绑定 TaskDecorator 了吗？快照里的 `tenantID` 是 null 吗？
    （快照经 `withSnapshot` 作用域自动恢复，无手动清理负担）
-3. 若是 Web 请求：鉴权过滤器在 `TrackingFilter` 绑定的作用域内向持有者写租户了吗？
+3. 若是 Web 请求：鉴权过滤器在 `ExecutionContextFilter` 绑定的作用域内向持有者写租户了吗？
 
 当前实现对此场景**没有专门的告警日志**（宁可静默也不中断正常请求流），上述三步是唯一的定位
 手段；对隔离要求苛刻的项目可在 dev/test profile 自行加断言或日志增强。
@@ -565,7 +565,7 @@ spring:
   （MISSING/ROOT）权威定义，零 Spring/JPA 依赖；
 - `TenantScopeExitHandler`：作用域退出通知 SPI（I2：缓存与视角一致），实现由容器收集注入
   （每个容器收集自己的实现列表）；
-- `TenantContextAccessor`：身份上下文唯一读取源（单级：跟踪作用域持有者优先 → 线程快照回退）；
+- `ExecutionContextAccessor`：身份上下文唯一读取源（单级：执行作用域持有者优先 → 线程快照回退）；
 - `TenantPrivilege`：提权/读放行状态唯一判断源（`isActive` / `isReadBypassActive` /
   `isAnyReadBypassActive`），纯 ScopedValue 状态，零持久化概念；Spring 单例 bean，
   经构造注入使用；
@@ -578,7 +578,7 @@ spring:
 
 1. 用 interceptor（MyBatis `Interceptor`）在每条 SQL 前自查同一状态：任一读放行激活 →
    不追加 tenant 条件；否则 → 所有 tenant-scoped 表自动追加 `WHERE tenant_id = #{当前租户}`，
-   租户取自 `TenantContextAccessor`；
+   租户取自 `ExecutionContextAccessor`；
 2. insert 自动填充 `tenant_id` 列；缺失时的行为保持 fail-closed（追加恒假条件，返回空集）；
 3. 写入门禁沿用 §3 的两条件判定——interceptor 遍历参数中的租户实体，调 common
    `TenantWriteGate.decideInjection`，按返回值执行注入，判断源用 `TenantPrivilege.isActive()`；

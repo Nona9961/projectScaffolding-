@@ -3,7 +3,7 @@ package com.nona.inf.persistence.tenant;
 import com.nona.ProjectApplication;
 import com.nona.annotation.ScaffoldGenerated;
 import com.nona.inf.context.TenantPrivilege;
-import com.nona.inf.context.TrackingContext;
+import com.nona.inf.context.ExecutionContext;
 import com.nona.inf.persistence.repository.jpa.TestTenantNoteRepository;
 import com.nona.tenant.TenantScopeExitHandler;
 import org.junit.jupiter.api.Test;
@@ -183,13 +183,13 @@ class TenantPrivilegeMultiContextContractAIntegrationTest {
 
     /**
      * 租户缓存契约在第二 context 下同样成立：租户身份经
-     * {@link TrackingContext#withScope} + holder 写入（不依赖请求作用域 bean），
+     * {@link ExecutionContext#withScope} + holder 写入（不依赖请求作用域 bean），
      * 作用域退出 flush+clear 语义由该 context 自己的 JpaTenantScopeExitHandler 驱动。
      */
     @Test
     void tenantCacheContractHoldsInSecondContext() throws Exception {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTenantID("tenant-A");
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTenantID("tenant-A");
             elevatedTenantTestService.saveNoteForTenant("tenant-A", 801L, "note-a");
             elevatedTenantTestService.saveNoteForTenant("tenant-B", 811L, "note-b");
 

@@ -9,8 +9,8 @@ import org.apache.logging.log4j.ThreadContext;
 import java.util.Objects;
 
 /**
- * 跟踪上下文静态门面：请求 / 追踪上下文统一到单一 {@link ScopedValue} 通道
- * （{@code TrackingScope} 持有者载体），作为请求 / 追踪上下文的唯一主通路。
+ * 执行上下文静态门面：一次执行（HTTP 请求 / 异步任务 / 消息消费 / 定时任务）的上下文
+ * 统一到单一 {@link ScopedValue} 通道（{@code ExecutionContextState} 持有者载体）。
  * <p>
  * 语义要点：
  * <ul>
@@ -25,19 +25,19 @@ import java.util.Objects;
  * @author nona9961
  */
 @ScaffoldGenerated
-public final class TrackingContext {
+public final class ExecutionContext {
 
     /**
-     * 单一 ScopedValue 通道：值为每作用域的 {@link TrackingScope} 持有者。
+     * 单一 ScopedValue 通道：值为每作用域的 {@link ExecutionContextState} 持有者。
      * 仅经 {@link #withScope(Runnable)} 绑定，出作用域自动恢复 unbound。
      */
-    private static final ScopedValue<TrackingScope> TRACKING = ScopedValue.newInstance();
+    private static final ScopedValue<ExecutionContextState> STATE = ScopedValue.newInstance();
 
-    private TrackingContext() {
+    private ExecutionContext() {
     }
 
     /**
-     * 在新建的跟踪作用域内执行 {@code action}：绑定新的空 {@link TrackingScope} 持有者，
+     * 在新建的执行作用域内执行 {@code action}：绑定新的空 {@link ExecutionContextState} 持有者，
      * 退出（含异常路径）自动恢复 unbound。
      * <p>
      * MDC 三键（{@code trace_id} / {@code span_id} / {@code trace_flags}）按栈语义管理：
@@ -50,27 +50,27 @@ public final class TrackingContext {
      * @param action 绑定作用域内执行的操作
      */
     public static void withScope(Runnable action) {
-        final String entryTraceId = ThreadContext.get(TrackingScope.MDC_TRACE_ID);
-        final String entrySpanId = ThreadContext.get(TrackingScope.MDC_SPAN_ID);
-        final String entryTraceFlags = ThreadContext.get(TrackingScope.MDC_TRACE_FLAGS);
+        final String entryTraceId = ThreadContext.get(ExecutionContextState.MDC_TRACE_ID);
+        final String entrySpanId = ThreadContext.get(ExecutionContextState.MDC_SPAN_ID);
+        final String entryTraceFlags = ThreadContext.get(ExecutionContextState.MDC_TRACE_FLAGS);
         try {
-            ScopedValue.where(TRACKING, new TrackingScope()).run(action);
+            ScopedValue.where(STATE, new ExecutionContextState()).run(action);
         }
         finally {
-            restoreMdcKey(TrackingScope.MDC_TRACE_ID, entryTraceId);
-            restoreMdcKey(TrackingScope.MDC_SPAN_ID, entrySpanId);
-            restoreMdcKey(TrackingScope.MDC_TRACE_FLAGS, entryTraceFlags);
+            restoreMdcKey(ExecutionContextState.MDC_TRACE_ID, entryTraceId);
+            restoreMdcKey(ExecutionContextState.MDC_SPAN_ID, entrySpanId);
+            restoreMdcKey(ExecutionContextState.MDC_TRACE_FLAGS, entryTraceFlags);
         }
     }
 
     /**
-     * 获取当前作用域的 {@link TrackingScope} 持有者（写 / 读访问入口）。
+     * 获取当前作用域的 {@link ExecutionContextState} 持有者（写 / 读访问入口）。
      *
      * @return 当前作用域的持有者；未绑定作用域时返回 {@code null}
      */
     @Nullable
-    public static TrackingScope scope() {
-        return TRACKING.isBound() ? TRACKING.get() : null;
+    public static ExecutionContextState scope() {
+        return STATE.isBound() ? STATE.get() : null;
     }
 
     /**
@@ -86,10 +86,10 @@ public final class TrackingContext {
      */
     public static ChangeTracker tracker(ChangeTrackerProvider provider) {
         Objects.requireNonNull(provider, "provider cannot be null");
-        final TrackingScope current = scope();
+        final ExecutionContextState current = scope();
         if (current == null) {
             throw new IllegalStateException(
-                    "未绑定跟踪作用域：请经入口组件（TrackingFilter / 任务传播装饰器）以 TrackingContext.withScope 包裹任务体后调用");
+                    "未绑定执行作用域：请经入口组件（ExecutionContextFilter / 任务传播装饰器）以 ExecutionContext.withScope 包裹任务体后调用");
         }
         return current.getOrCreateTracker(provider);
     }

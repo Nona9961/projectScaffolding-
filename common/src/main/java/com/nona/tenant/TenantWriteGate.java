@@ -26,14 +26,14 @@ public final class TenantWriteGate {
     /**
      * 视角缺失占位（fail-closed）：租户缺失时 Hibernate resolver 返回该值，不放行 tenant-scoped 数据。
      * <p>
-     * 权威定义处：server 侧 {@code TenantContextAccessor.MISSING_TENANT_ID} 为转发常量。
+     * 权威定义处：server 侧 {@code ExecutionContextAccessor.MISSING_TENANT_ID} 为转发常量。
      */
     public static final String MISSING_TENANT_ID = "__MISSING_TENANT__";
 
     /**
      * 全量视角（root）：读放行/提权作用域下 Hibernate resolver 返回该值以绕过 discriminator 过滤。
      * <p>
-     * 权威定义处：server 侧 {@code TrackingContextTenantIdentifierResolver.ROOT_TENANT_ID} 为转发常量。
+     * 权威定义处：server 侧 {@code ExecutionContextTenantIdentifierResolver.ROOT_TENANT_ID} 为转发常量。
      */
     public static final String ROOT_TENANT_ID = "__ROOT_TENANT__";
 

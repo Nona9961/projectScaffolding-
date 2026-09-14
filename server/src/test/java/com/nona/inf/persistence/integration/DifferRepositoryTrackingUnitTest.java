@@ -5,10 +5,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.nona.annotation.ScaffoldGenerated;
 import com.nona.changeTracking.domain.model.tracking.ChangeTracker;
-import com.nona.inf.context.RequestContextPropagatingTaskDecorator;
-import com.nona.inf.context.TenantContextAccessor;
-import com.nona.inf.context.TrackingContext;
-import com.nona.inf.context.TrackingScope;
+import com.nona.inf.context.ContextPropagatingTaskDecorator;
+import com.nona.inf.context.ExecutionContextAccessor;
+import com.nona.inf.context.ExecutionContext;
+import com.nona.inf.context.ExecutionContextState;
 import com.nona.inf.persistence.converters.ConverterRegistry;
 import com.nona.inf.persistence.tracking.ChangeTrackerProvider;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,7 +29,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * {@link com.nona.inf.persistence.repository.DifferRepository} 迁移契约场景测试——
- * 钉住仓储的追踪通道契约：追踪器与根对象快照登记全部收敛到 {@link TrackingContext}
+ * 钉住仓储的追踪通道契约：追踪器与根对象快照登记全部收敛到 {@link ExecutionContext}
  * 作用域持有者（快照注册表 = {@code scope().getSnapshots()}，追踪器 = 作用域内懒创建，
  * 首用即建立基线），仓储自身不再持有请求级上下文实例。
  * <p>
@@ -146,7 +146,7 @@ class DifferRepositoryTrackingUnitTest {
                 .build();
 
         // 仓储构造器：DifferRepository 已收敛为 3 参（repository / convertor / changeTrackerProvider），
-        // 不再持有请求级上下文实例——追踪器与快照登记全部经 TrackingContext 作用域持有者。
+        // 不再持有请求级上下文实例——追踪器与快照登记全部经 ExecutionContext 作用域持有者。
         ListCrudRepository<FullIntegrationUnitTest.OrderPO, Long> crudRepo =
                 new FullIntegrationUnitTest.InMemoryOrderPORepository(jdbc, new FullIntegrationUnitTest.OrderConverter());
         orderRepository = new OrderRepository(
@@ -174,11 +174,11 @@ class DifferRepositoryTrackingUnitTest {
     void getByIDShouldRegisterBaselineInScopeHolder() {
         insertOrderRow();
 
-        TrackingContext.withScope(() -> {
+        ExecutionContext.withScope(() -> {
             FullIntegrationUnitTest.Order loaded = orderRepository.getByID(1L);
             assertThat(loaded).isNotNull();
 
-            TrackingScope scope = TrackingContext.scope();
+            ExecutionContextState scope = ExecutionContext.scope();
             assertThat(scope).isNotNull();
             assertThat(scope.getSnapshots()).containsKey(1L);
             assertThat(scope.trackerIfPresent()).isNotNull();
@@ -193,7 +193,7 @@ class DifferRepositoryTrackingUnitTest {
     void modifyThenSaveShouldProduceFullChangeSetOnUpdatePath() {
         insertOrderRow();
 
-        TrackingContext.withScope(() -> {
+        ExecutionContext.withScope(() -> {
             FullIntegrationUnitTest.Order loaded = orderRepository.getByID(1L);
             loaded.setStatus("PAID");
 
@@ -202,7 +202,7 @@ class DifferRepositoryTrackingUnitTest {
             assertThat(jdbc.queryForObject("SELECT status FROM t_order WHERE id = ?", String.class, 1L))
                     .isEqualTo("PAID");
 
-            TrackingScope scope = TrackingContext.scope();
+            ExecutionContextState scope = ExecutionContext.scope();
             assertThat(scope.getSnapshots().get(1L)).isSameAs(loaded);
             assertThat(scope.trackerIfPresent()).isNotNull();
         });
@@ -214,7 +214,7 @@ class DifferRepositoryTrackingUnitTest {
      */
     @Test
     void saveNewRootShouldGoInsertPathAndRegisterScopeSnapshot() {
-        TrackingContext.withScope(() -> {
+        ExecutionContext.withScope(() -> {
             FullIntegrationUnitTest.Order order = new FullIntegrationUnitTest.Order(2L, "ORD-002");
             order.setStatus("PENDING");
 
@@ -222,7 +222,7 @@ class DifferRepositoryTrackingUnitTest {
             assertThat(saved).isTrue();
             assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM t_order WHERE id = ?", Long.class, 2L))
                     .isEqualTo(1L);
-            assertThat(TrackingContext.scope().getSnapshots()).containsKey(2L);
+            assertThat(ExecutionContext.scope().getSnapshots()).containsKey(2L);
         });
     }
 
@@ -241,7 +241,7 @@ class DifferRepositoryTrackingUnitTest {
                 VALUES (?, ?, ?, ?)
                 """, 2L, "ORD-002", "PENDING", "test-tenant");
 
-        TrackingContext.withScope(() -> {
+        ExecutionContext.withScope(() -> {
             FullIntegrationUnitTest.Order order1 = orderRepository.getByID(1L);
             FullIntegrationUnitTest.Order order2 = orderRepository.getByID(2L);
             order1.setStatus("PAID");
@@ -295,11 +295,11 @@ class DifferRepositoryTrackingUnitTest {
     @Test
     void asyncSaveShouldYieldFullChangeSetAndRebuildWorkerScopeTracking() throws Exception {
         insertOrderRow();
-        TenantContextAccessor accessor = new TenantContextAccessor();
-        RequestContextPropagatingTaskDecorator decorator = new RequestContextPropagatingTaskDecorator(accessor);
+        ExecutionContextAccessor accessor = new ExecutionContextAccessor();
+        ContextPropagatingTaskDecorator decorator = new ContextPropagatingTaskDecorator(accessor);
         ExecutorService pool = Executors.newSingleThreadExecutor();
         try {
-            TrackingContext.withScope(() -> {
+            ExecutionContext.withScope(() -> {
                 FullIntegrationUnitTest.Order loaded = orderRepository.getByID(1L);
                 loaded.setStatus("PAID");
 
@@ -309,7 +309,7 @@ class DifferRepositoryTrackingUnitTest {
                 Runnable task = () -> {
                     boolean saved = orderRepository.save(loaded);
                     workerSaved.set(saved);
-                    TrackingScope scope = TrackingContext.scope();
+                    ExecutionContextState scope = ExecutionContext.scope();
                     workerSnapshots.set(scope.getSnapshots());
                     workerTracker.set(scope.trackerIfPresent());
                 };
@@ -346,10 +346,10 @@ class DifferRepositoryTrackingUnitTest {
         FullIntegrationUnitTest.Order order = new FullIntegrationUnitTest.Order(4L, "ORD-004");
         order.setStatus("PENDING");
 
-        TrackingContext.withScope(() -> {
+        ExecutionContext.withScope(() -> {
             assertThat(orderRepository.save(order)).isTrue();   // 首次：insert 路径
         });
-        TrackingContext.withScope(() -> {
+        ExecutionContext.withScope(() -> {
             assertThat(orderRepository.save(order)).isTrue();   // 作用域已换：重新 insert
         });
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM t_order WHERE id = ?", Long.class, 4L))

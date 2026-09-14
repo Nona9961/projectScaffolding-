@@ -3,7 +3,7 @@ package com.nona.inf.context;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.nona.annotation.ScaffoldGenerated;
-import com.nona.inf.context.TenantContextAccessor.ContextSnapshot;
+import com.nona.inf.context.ContextSnapshot;
 import org.apache.logging.log4j.ThreadContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -12,7 +12,7 @@ import java.util.List;
 
 /**
  * {@link ContextSnapshot} 跟踪身份传播面场景测试：提交线程捕获（持有者 → 已绑定快照回退）
- * 与 worker 侧重放（{@link TenantContextAccessor#withSnapshot} 绑定即同步 MDC 三键、
+ * 与 worker 侧重放（{@link ExecutionContextAccessor#withSnapshot} 绑定即同步 MDC 三键、
  * 退出恢复入口状态）。
  * <p>
  * 契约验证点：
@@ -32,7 +32,7 @@ class ContextSnapshotTraceBridgeUnitTest {
     /**
      * 被测访问器：无参构造（纯 JUnit 形态，不经 Spring 装配）。
      */
-    private final TenantContextAccessor accessor = new TenantContextAccessor();
+    private final ExecutionContextAccessor accessor = new ExecutionContextAccessor();
 
     /**
      * 用例后清理 MDC 三键：ThreadContext 为线程局部且 surefire 复用 fork 线程，
@@ -53,10 +53,10 @@ class ContextSnapshotTraceBridgeUnitTest {
      */
     @Test
     void shouldCaptureTraceIdentityFromScopeHolder() {
-        TrackingContext.withScope(() -> {
-            final TrackingScope.TraceIdentity identity =
-                    new TrackingScope.TraceIdentity("capture-t", "capture-s", "01");
-            TrackingContext.scope().setTraceIdentity(identity);
+        ExecutionContext.withScope(() -> {
+            final TraceIdentity identity =
+                    new TraceIdentity("capture-t", "capture-s", "01");
+            ExecutionContext.scope().setTraceIdentity(identity);
 
             assertThat(accessor.captureSnapshot().traceIdentity()).isEqualTo(identity);
         });
@@ -70,9 +70,9 @@ class ContextSnapshotTraceBridgeUnitTest {
     void shouldExposeSnapshotTraceIdentityInsideWithSnapshotAndClearAfterExit() {
         final ContextSnapshot snapshot = new ContextSnapshot(
                 "tenant-a", List.of("admin"), "user-1", null,
-                new TrackingScope.TraceIdentity("replay-t", "replay-s", "01"));
+                new TraceIdentity("replay-t", "replay-s", "01"));
 
-        TenantContextAccessor.withSnapshot(snapshot, () -> {
+        ExecutionContextAccessor.withSnapshot(snapshot, () -> {
             assertThat(ThreadContext.get("trace_id")).isEqualTo("replay-t");
             assertThat(ThreadContext.get("span_id")).isEqualTo("replay-s");
             assertThat(ThreadContext.get("trace_flags")).isEqualTo("01");
@@ -91,12 +91,12 @@ class ContextSnapshotTraceBridgeUnitTest {
      */
     @Test
     void shouldFallBackToBoundSnapshotTraceIdentityWhenHolderHasNone() {
-        final TrackingScope.TraceIdentity boundIdentity =
-                new TrackingScope.TraceIdentity("bound-t", "bound-s", "00");
+        final TraceIdentity boundIdentity =
+                new TraceIdentity("bound-t", "bound-s", "00");
         final ContextSnapshot bound = new ContextSnapshot(
                 "tenant-a", List.of("admin"), "user-1", null, boundIdentity);
 
-        TenantContextAccessor.withSnapshot(bound, () -> TrackingContext.withScope(() ->
+        ExecutionContextAccessor.withSnapshot(bound, () -> ExecutionContext.withScope(() ->
                 assertThat(accessor.captureSnapshot().traceIdentity()).isEqualTo(boundIdentity)));
     }
 
@@ -108,12 +108,12 @@ class ContextSnapshotTraceBridgeUnitTest {
     void shouldPreferHolderTraceIdentityOverBoundSnapshot() {
         final ContextSnapshot bound = new ContextSnapshot(
                 "tenant-a", List.of("admin"), "user-1", null,
-                new TrackingScope.TraceIdentity("bound-t", "bound-s", "00"));
+                new TraceIdentity("bound-t", "bound-s", "00"));
 
-        TenantContextAccessor.withSnapshot(bound, () -> TrackingContext.withScope(() -> {
-            final TrackingScope.TraceIdentity holderIdentity =
-                    new TrackingScope.TraceIdentity("holder-t", "holder-s", "01");
-            TrackingContext.scope().setTraceIdentity(holderIdentity);
+        ExecutionContextAccessor.withSnapshot(bound, () -> ExecutionContext.withScope(() -> {
+            final TraceIdentity holderIdentity =
+                    new TraceIdentity("holder-t", "holder-s", "01");
+            ExecutionContext.scope().setTraceIdentity(holderIdentity);
 
             assertThat(accessor.captureSnapshot().traceIdentity()).isEqualTo(holderIdentity);
         }));
@@ -131,9 +131,9 @@ class ContextSnapshotTraceBridgeUnitTest {
 
         final ContextSnapshot snapshot = new ContextSnapshot(
                 null, null, null, null,
-                new TrackingScope.TraceIdentity("replay-t", "replay-s", "01"));
+                new TraceIdentity("replay-t", "replay-s", "01"));
 
-        TenantContextAccessor.withSnapshot(snapshot, () -> {
+        ExecutionContextAccessor.withSnapshot(snapshot, () -> {
             assertThat(ThreadContext.get("trace_id")).isEqualTo("replay-t");
             assertThat(ThreadContext.get("span_id")).isEqualTo("replay-s");
             assertThat(ThreadContext.get("trace_flags")).isEqualTo("01");
@@ -154,7 +154,7 @@ class ContextSnapshotTraceBridgeUnitTest {
     void shouldKeepPriorMdcStateWhenSnapshotCarriesNoTraceIdentity() {
         ThreadContext.put("trace_id", "outer-t");
 
-        TenantContextAccessor.withSnapshot(ContextSnapshot.EMPTY, () ->
+        ExecutionContextAccessor.withSnapshot(ContextSnapshot.EMPTY, () ->
                 assertThat(ThreadContext.get("trace_id")).isEqualTo("outer-t"));
     }
 

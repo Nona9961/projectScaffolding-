@@ -10,12 +10,12 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * 租户上下文读取器（单级解析：基于 {@link TrackingContext} 的 ScopedValue 主通道）。
+ * 租户上下文读取器（单级解析：基于 {@link ExecutionContext} 的 ScopedValue 主通道）。
  * <p>
  * 解析顺序：
  * <ol>
- *   <li>{@link TrackingContext#scope()} 持有者（holder）优先——字段非空/非空白才取；
- *       holder 由入口组件（{@link TrackingFilter} / 任务传播装饰器）的 {@code withScope}
+ *   <li>{@link ExecutionContext#scope()} 持有者（holder）优先——字段非空/非空白才取；
+ *       holder 由入口组件（{@link ExecutionContextFilter} / 任务传播装饰器）的 {@code withScope}
  *       建立，授权过滤器在作用域内写入三元组</li>
  *   <li>{@link #boundSnapshot()} 嵌套异步回退——worker 线程（经 {@link #withSnapshot}
  *       绑定）丢失 holder 字段时继承外层快照视角</li>
@@ -32,7 +32,7 @@ import java.util.List;
  */
 @Component
 @ScaffoldGenerated
-public class TenantContextAccessor {
+public class ExecutionContextAccessor {
 
     /**
      * tenant 缺失时使用的占位值，用于 fail-closed（不放行 tenant-scoped 数据）。
@@ -62,29 +62,29 @@ public class TenantContextAccessor {
      * @param action   绑定作用域内执行的操作
      */
     public static void withSnapshot(ContextSnapshot snapshot, Runnable action) {
-        final String entryTraceId = ThreadContext.get(TrackingScope.MDC_TRACE_ID);
-        final String entrySpanId = ThreadContext.get(TrackingScope.MDC_SPAN_ID);
-        final String entryTraceFlags = ThreadContext.get(TrackingScope.MDC_TRACE_FLAGS);
-        final TrackingScope.TraceIdentity traceIdentity = snapshot.traceIdentity();
+        final String entryTraceId = ThreadContext.get(ExecutionContextState.MDC_TRACE_ID);
+        final String entrySpanId = ThreadContext.get(ExecutionContextState.MDC_SPAN_ID);
+        final String entryTraceFlags = ThreadContext.get(ExecutionContextState.MDC_TRACE_FLAGS);
+        final TraceIdentity traceIdentity = snapshot.traceIdentity();
         if (traceIdentity != null) {
-            ThreadContext.put(TrackingScope.MDC_TRACE_ID, traceIdentity.traceId());
-            ThreadContext.put(TrackingScope.MDC_SPAN_ID, traceIdentity.spanId());
-            ThreadContext.put(TrackingScope.MDC_TRACE_FLAGS, traceIdentity.traceFlags());
+            ThreadContext.put(ExecutionContextState.MDC_TRACE_ID, traceIdentity.traceId());
+            ThreadContext.put(ExecutionContextState.MDC_SPAN_ID, traceIdentity.spanId());
+            ThreadContext.put(ExecutionContextState.MDC_TRACE_FLAGS, traceIdentity.traceFlags());
         }
         try {
             ScopedValue.where(SNAPSHOT, snapshot).run(action);
         }
         finally {
-            restoreMdcKey(TrackingScope.MDC_TRACE_ID, entryTraceId);
-            restoreMdcKey(TrackingScope.MDC_SPAN_ID, entrySpanId);
-            restoreMdcKey(TrackingScope.MDC_TRACE_FLAGS, entryTraceFlags);
+            restoreMdcKey(ExecutionContextState.MDC_TRACE_ID, entryTraceId);
+            restoreMdcKey(ExecutionContextState.MDC_SPAN_ID, entrySpanId);
+            restoreMdcKey(ExecutionContextState.MDC_TRACE_FLAGS, entryTraceFlags);
         }
     }
 
     /**
      * 读取当前线程已绑定的快照；未绑定时返回 {@code null}。
      * <p>
-     * 包可见：供同包 {@link TrackingScope} 首次创建钩子读取
+     * 包可见：供同包 {@link ExecutionContextState} 首次创建钩子读取
      * SNAPSHOT 槽的 {@code trackingBaseline}（异步 worker 基线重建判定）；
      * 仅限包内消费，不对外暴露。
      *
@@ -113,7 +113,7 @@ public class TenantContextAccessor {
      * 字段级解析：holder 非空且非空白才取；否则回退 boundSnapshot；两源皆无 → {@code null}。
      */
     @Nullable
-    private static String tenantIdOrNull(@Nullable TrackingScope scope, @Nullable ContextSnapshot bound) {
+    private static String tenantIdOrNull(@Nullable ExecutionContextState scope, @Nullable ContextSnapshot bound) {
         if (scope != null) {
             final String tenantID = scope.getTenantID();
             if (tenantID != null && !tenantID.isBlank()) {
@@ -133,7 +133,7 @@ public class TenantContextAccessor {
      * 字段级解析：holder 非空才取；否则回退 boundSnapshot；两源皆无 → {@code null}。
      */
     @Nullable
-    private static List<String> roleOrNull(@Nullable TrackingScope scope, @Nullable ContextSnapshot bound) {
+    private static List<String> roleOrNull(@Nullable ExecutionContextState scope, @Nullable ContextSnapshot bound) {
         if (scope != null && scope.getRole() != null) {
             return scope.getRole();
         }
@@ -147,7 +147,7 @@ public class TenantContextAccessor {
      * 字段级解析：holder 非空才取；否则回退 boundSnapshot；两源皆无 → {@code null}。
      */
     @Nullable
-    private static String identityOrNull(@Nullable TrackingScope scope, @Nullable ContextSnapshot bound) {
+    private static String identityOrNull(@Nullable ExecutionContextState scope, @Nullable ContextSnapshot bound) {
         if (scope != null && scope.getIdentity() != null) {
             return scope.getIdentity();
         }
@@ -162,10 +162,10 @@ public class TenantContextAccessor {
      * 两源皆无 → {@code null}。
      */
     @Nullable
-    private static TrackingScope.TraceIdentity traceIdentityOrNull(
-            @Nullable TrackingScope scope, @Nullable ContextSnapshot bound) {
+    private static TraceIdentity traceIdentityOrNull(
+            @Nullable ExecutionContextState scope, @Nullable ContextSnapshot bound) {
         if (scope != null) {
-            final TrackingScope.TraceIdentity holderIdentity = scope.getTraceIdentity();
+            final TraceIdentity holderIdentity = scope.getTraceIdentity();
             if (holderIdentity != null) {
                 return holderIdentity;
             }
@@ -179,17 +179,17 @@ public class TenantContextAccessor {
     /**
      * 捕获当前上下文身份三元组（tenantID / role / identity）、追踪基线与跟踪身份，供跨线程传播。
      * <p>
-     * 解析顺序：{@link TrackingContext#scope()} 持有者优先——无作用域时读当前线程已绑定快照
+     * 解析顺序：{@link ExecutionContext#scope()} 持有者优先——无作用域时读当前线程已绑定快照
      * （嵌套异步：worker 内再派发继承外层视角）——两者皆无返回三元组全空快照。
      * <p>
      * <strong>追踪基线</strong>：基线捕获与三元组解析相互独立——
-     * 仅当当前作用域（{@link TrackingContext#scope()}）已存在追踪器时，经
+     * 仅当当前作用域（{@link ExecutionContext#scope()}）已存在追踪器时，经
      * {@code captureBaseline()} 导出深拷贝基线（不得触发创建：非 DB 请求零追踪开销的
      * 懒语义不被捕获动作破坏）；无作用域或尚无追踪器时基线为 {@code null}（合法态，
      * worker 侧走普通创建路径）。
      * <p>
      * <strong>跟踪身份</strong>：整体捕获（三元组原子，无字段级回退）——作用域持有者
-     * （{@link TrackingScope#getTraceIdentity()}）非空取持有者，否则回退已绑定快照的
+     * （{@link ExecutionContextState#getTraceIdentity()}）非空取持有者，否则回退已绑定快照的
      * 跟踪身份；两源皆无 → {@code null}（合法态：无 trace 身份）。
      *
      * @return 当前上下文快照（三元组 + 可能存在的追踪基线与跟踪身份）；三元组按字段级解析：
@@ -197,7 +197,7 @@ public class TenantContextAccessor {
      *         （无作用域且无追踪器时返回全空快照）
      */
     public ContextSnapshot captureSnapshot() {
-        final TrackingScope scope = TrackingContext.scope();
+        final ExecutionContextState scope = ExecutionContext.scope();
         final BaselineSnapshot trackingBaseline =
                 scope != null && scope.trackerIfPresent() != null
                         ? scope.trackerIfPresent().captureBaseline()
@@ -218,7 +218,7 @@ public class TenantContextAccessor {
      * <p>
      * 解析顺序（单级）：
      * <ol>
-     *   <li>{@link TrackingContext#scope()} 持有者（holder）——字段非空且非空白才取
+     *   <li>{@link ExecutionContext#scope()} 持有者（holder）——字段非空且非空白才取
      *       （空白视为缺失，继续回退）</li>
      *   <li>ScopedValue 回退（经 {@link #withSnapshot(ContextSnapshot, Runnable)} 绑定）——
      *       嵌套异步 worker 继承外层视角；作用域退出自动恢复</li>
@@ -229,7 +229,7 @@ public class TenantContextAccessor {
      */
     @Nullable
     public String getTenantID() {
-        return tenantIdOrNull(TrackingContext.scope(), boundSnapshot());
+        return tenantIdOrNull(ExecutionContext.scope(), boundSnapshot());
     }
 
     /**
@@ -248,87 +248,27 @@ public class TenantContextAccessor {
     /**
      * 获取当前上下文中的 role 列表。
      * <p>
-     * 解析顺序（单级）：1) {@link TrackingContext#scope()} 持有者（字段非空才取）→
+     * 解析顺序（单级）：1) {@link ExecutionContext#scope()} 持有者（字段非空才取）→
      * 2) {@link #boundSnapshot()} 嵌套回退 → 3) {@code null}。
      *
      * @return role 列表；若缺失则返回 {@code null}
      */
     @Nullable
     public List<String> getRole() {
-        return roleOrNull(TrackingContext.scope(), boundSnapshot());
+        return roleOrNull(ExecutionContext.scope(), boundSnapshot());
     }
 
     /**
      * 获取当前上下文中的 identity。
      * <p>
-     * 解析顺序（单级）：1) {@link TrackingContext#scope()} 持有者（字段非空才取）→
+     * 解析顺序（单级）：1) {@link ExecutionContext#scope()} 持有者（字段非空才取）→
      * 2) {@link #boundSnapshot()} 嵌套回退 → 3) {@code null}。
      *
      * @return identity；若缺失则返回 {@code null}
      */
     @Nullable
     public String getIdentity() {
-        return identityOrNull(TrackingContext.scope(), boundSnapshot());
+        return identityOrNull(ExecutionContext.scope(), boundSnapshot());
     }
 
-    /**
-     * 跨线程上下文快照（不可变 record），供异步线程传播。
-     * <p>
-     * 承载当前上下文安全且异步必需的三元组（tenantID / role / identity）
-     * 与追踪基线（{@code trackingBaseline}——{@code tracker.captureBaseline()} 的深拷贝产出；
-     * 提交线程无追踪器时为 {@code null}）。attributes 与快照被有意排除——
-     * 它们可能携带作用域可变状态。
-     *
-     * @param tenantID         租户 ID；可能为 null
-     * @param role             角色列表；可能为 null
-     * @param identity         请求者身份；可能为 null
-     * @param trackingBaseline 追踪基线（深拷贝）；无追踪器时为 null
-     * @param traceIdentity    跟踪身份（trace_id / span_id / trace_flags 三元组）；
-     *                         无跟踪身份时为 null（三键整体缺失，无部分三元组）
-     */
-    public record ContextSnapshot(
-            @Nullable String tenantID,
-            @Nullable List<String> role,
-            @Nullable String identity,
-            @Nullable BaselineSnapshot trackingBaseline,
-            @Nullable TrackingScope.TraceIdentity traceIdentity
-    ) {
-        /** 表示缺失 / 已清除上下文的哨兵快照（三元组、追踪基线与跟踪身份均为空）。 */
-        public static final ContextSnapshot EMPTY = new ContextSnapshot(null, null, null, null);
-
-        /**
-         * 兼容便捷构造器：三元组 + 追踪基线（跟踪身份缺省为 {@code null}）。
-         * <p>
-         * 保留以兼容既有调用形态；新增跟踪身份槽后旧构造器语义不变（无跟踪身份）。
-         *
-         * @param tenantID         租户 ID；可能为 null
-         * @param role             角色列表；可能为 null
-         * @param identity         请求者身份；可能为 null
-         * @param trackingBaseline 追踪基线（深拷贝）；无追踪器时为 null
-         */
-        public ContextSnapshot(
-                @Nullable String tenantID,
-                @Nullable List<String> role,
-                @Nullable String identity,
-                @Nullable BaselineSnapshot trackingBaseline) {
-            this(tenantID, role, identity, trackingBaseline, null);
-        }
-
-        /**
-         * 兼容便捷构造器：仅三元组（追踪基线与跟踪身份缺省为 {@code null}）。
-         * <p>
-         * 保留以兼容既有调用形态（传播槽结构不变）；基线缺省语义 =
-         * 「无追踪器 / 不传播基线」。
-         *
-         * @param tenantID 租户 ID；可能为 null
-         * @param role     角色列表；可能为 null
-         * @param identity 请求者身份；可能为 null
-         */
-        public ContextSnapshot(
-                @Nullable String tenantID,
-                @Nullable List<String> role,
-                @Nullable String identity) {
-            this(tenantID, role, identity, null);
-        }
-    }
 }

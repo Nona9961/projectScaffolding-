@@ -20,7 +20,7 @@ import java.util.concurrent.Callable;
  * 持久化适配层通过 {@link #isAnyReadBypassActive()} 在每次数据访问时自查状态决定过滤行为（设计 D1/D2）。
  * 基于 ScopedValue：出作用域自动恢复、块内不可篡改、默认不跨线程传播。
  * <p>
- * 形态说明：本类为 Spring 单例 bean，作用域退出处理器与租户上下文访问器均经
+ * 形态说明：本类为 Spring 单例 bean，作用域退出处理器与执行上下文访问器均经
  * 构造注入——每个 Spring 容器各自实例化自己的 bean、收集自己的 {@link TenantScopeExitHandler}
  * 列表，不存在进程级静态注册表，多容器并存（如多测试 context）互不覆盖。静态 {@code ScopedValue}
  * 字段保留（static 与 bean 正交：字段仅保存实例引用，绑定状态住在线程 carrier，跨容器共享无害）。
@@ -47,21 +47,21 @@ public class TenantPrivilege {
     private final List<TenantScopeExitHandler> scopeExitHandlers;
 
     /**
-     * 租户上下文访问器（构造注入，审计日志解析 identity/tenantID 用）；{@code null} 表示不可用
+     * 执行上下文访问器（构造注入，审计日志解析 identity/tenantID 用）；{@code null} 表示不可用
      * （纯单测环境），身份解析回退 {@code "unknown"}。
      */
-    private final TenantContextAccessor tenantContextAccessor;
+    private final ExecutionContextAccessor executionContextAccessor;
 
     /**
      * 构造注入（Spring 单例 bean；纯单测环境可显式 new）。
      *
      * @param scopeExitHandlers   容器内全部作用域退出处理器；可为空列表（退出通知 no-op）
-     * @param tenantContextAccessor 租户上下文访问器；可为 {@code null}（审计日志身份回退 unknown）
+     * @param executionContextAccessor 执行上下文访问器；可为 {@code null}（审计日志身份回退 unknown）
      */
     public TenantPrivilege(List<TenantScopeExitHandler> scopeExitHandlers,
-                           TenantContextAccessor tenantContextAccessor) {
+                           ExecutionContextAccessor executionContextAccessor) {
         this.scopeExitHandlers = Objects.requireNonNull(scopeExitHandlers, "scopeExitHandlers");
-        this.tenantContextAccessor = tenantContextAccessor;
+        this.executionContextAccessor = executionContextAccessor;
     }
 
     /**
@@ -215,10 +215,10 @@ public class TenantPrivilege {
      * @return 调用者身份；不可用时返回 {@code "unknown"}
      */
     private String resolveIdentity() {
-        if (tenantContextAccessor == null) {
+        if (executionContextAccessor == null) {
             return "unknown";
         }
-        return Objects.requireNonNullElse(tenantContextAccessor.getIdentity(), "unknown");
+        return Objects.requireNonNullElse(executionContextAccessor.getIdentity(), "unknown");
     }
 
     /**
@@ -227,9 +227,9 @@ public class TenantPrivilege {
      * @return 当前租户；不可用时返回 {@code "unknown"}
      */
     private String resolveTenantID() {
-        if (tenantContextAccessor == null) {
+        if (executionContextAccessor == null) {
             return "unknown";
         }
-        return Objects.requireNonNullElse(tenantContextAccessor.getTenantID(), "unknown");
+        return Objects.requireNonNullElse(executionContextAccessor.getTenantID(), "unknown");
     }
 }

@@ -17,7 +17,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * MDC 桥接跨线程装配面测试：{@link RequestContextPropagatingTaskDecorator} 按下游项目
+ * MDC 桥接跨线程装配面测试：{@link ContextPropagatingTaskDecorator} 按下游项目
  * 接入形态绑定到真实 {@link ThreadPoolTaskExecutor}（单线程池 = 池化线程复用场景），
  * 提交线程 holder 写入的跟踪身份随任务传播到 worker 线程，任务结束后池化线程无残留
  * （含异常路径）。
@@ -73,9 +73,9 @@ class MdcBridgeCrossThreadIntegrationTest {
      */
     @BeforeEach
     void setUp() {
-        final TenantContextAccessor accessor = new TenantContextAccessor();
-        final RequestContextPropagatingTaskDecorator decorator =
-                new RequestContextPropagatingTaskDecorator(accessor);
+        final ExecutionContextAccessor accessor = new ExecutionContextAccessor();
+        final ContextPropagatingTaskDecorator decorator =
+                new ContextPropagatingTaskDecorator(accessor);
         executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(1);
         executor.setMaxPoolSize(1);
@@ -116,9 +116,9 @@ class MdcBridgeCrossThreadIntegrationTest {
         final AtomicReference<String> workerSpan = new AtomicReference<>();
         final AtomicReference<String> workerFlags = new AtomicReference<>();
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTraceIdentity(
-                    new TrackingScope.TraceIdentity("trace-x", "span-x", "01"));
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTraceIdentity(
+                    new TraceIdentity("trace-x", "span-x", "01"));
 
             await(executor.submit(() -> {
                 workerThread.set(Thread.currentThread());
@@ -147,9 +147,9 @@ class MdcBridgeCrossThreadIntegrationTest {
     void shouldNotLeakTraceIdentityToSecondTaskOnReusedPooledThread() {
         final AtomicReference<Thread> firstWorker = new AtomicReference<>();
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTraceIdentity(
-                    new TrackingScope.TraceIdentity("trace-y", "span-y", "01"));
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTraceIdentity(
+                    new TraceIdentity("trace-y", "span-y", "01"));
             await(executor.submit(() -> firstWorker.set(Thread.currentThread())));
         });
 
@@ -158,7 +158,7 @@ class MdcBridgeCrossThreadIntegrationTest {
         final AtomicReference<String> probeSpan = new AtomicReference<>();
         final AtomicReference<String> probeFlags = new AtomicReference<>();
 
-        TrackingContext.withScope(() -> await(executor.submit(() -> {
+        ExecutionContext.withScope(() -> await(executor.submit(() -> {
             probeWorker.set(Thread.currentThread());
             probeTrace.set(ThreadContext.get("trace_id"));
             probeSpan.set(ThreadContext.get("span_id"));
@@ -181,9 +181,9 @@ class MdcBridgeCrossThreadIntegrationTest {
     void shouldCleanUpTraceIdentityAfterExceptionPathTask() {
         final AtomicReference<Thread> failingWorker = new AtomicReference<>();
 
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTraceIdentity(
-                    new TrackingScope.TraceIdentity("trace-z", "span-z", "01"));
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTraceIdentity(
+                    new TraceIdentity("trace-z", "span-z", "01"));
             final Runnable failingTask = () -> {
                 failingWorker.set(Thread.currentThread());
                 throw new IllegalStateException("boom");
@@ -199,7 +199,7 @@ class MdcBridgeCrossThreadIntegrationTest {
         final AtomicReference<String> probeSpan = new AtomicReference<>();
         final AtomicReference<String> probeFlags = new AtomicReference<>();
 
-        TrackingContext.withScope(() -> await(executor.submit(() -> {
+        ExecutionContext.withScope(() -> await(executor.submit(() -> {
             probeWorker.set(Thread.currentThread());
             probeTrace.set(ThreadContext.get("trace_id"));
             probeSpan.set(ThreadContext.get("span_id"));
@@ -224,7 +224,7 @@ class MdcBridgeCrossThreadIntegrationTest {
         final AtomicReference<String> workerSpan = new AtomicReference<>();
         final AtomicReference<String> workerFlags = new AtomicReference<>();
 
-        TrackingContext.withScope(() -> await(executor.submit(() -> {
+        ExecutionContext.withScope(() -> await(executor.submit(() -> {
             workerTrace.set(ThreadContext.get("trace_id"));
             workerSpan.set(ThreadContext.get("span_id"));
             workerFlags.set(ThreadContext.get("trace_flags"));

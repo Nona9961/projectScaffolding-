@@ -9,7 +9,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link TrackingScope} 跟踪身份写入面场景测试：持有者写入即原子同步 MDC 三键
+ * {@link ExecutionContextState} 跟踪身份写入面场景测试：持有者写入即原子同步 MDC 三键
  * （{@code trace_id} / {@code span_id} / {@code trace_flags}），显式清除即三键整体移除。
  * <p>
  * 契约验证点：
@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
  * @author nona9961
  */
 @ScaffoldGenerated
-class TrackingScopeMdcBridgeUnitTest {
+class ExecutionContextStateMdcBridgeUnitTest {
 
     /**
      * 用例后清理 MDC 三键：ThreadContext 为线程局部且 surefire 复用 fork 线程，
@@ -44,9 +44,9 @@ class TrackingScopeMdcBridgeUnitTest {
      */
     @Test
     void shouldExposeTripleInMdcWhenWrittenToScope() {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTraceIdentity(
-                    new TrackingScope.TraceIdentity("trace-1", "span-1", "01"));
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTraceIdentity(
+                    new TraceIdentity("trace-1", "span-1", "01"));
 
             assertThat(ThreadContext.get("trace_id")).isEqualTo("trace-1");
             assertThat(ThreadContext.get("span_id")).isEqualTo("span-1");
@@ -59,12 +59,12 @@ class TrackingScopeMdcBridgeUnitTest {
      */
     @Test
     void shouldRetainTraceIdentityOnHolder() {
-        TrackingContext.withScope(() -> {
-            final TrackingScope.TraceIdentity identity =
-                    new TrackingScope.TraceIdentity("trace-2", "span-2", "00");
-            TrackingContext.scope().setTraceIdentity(identity);
+        ExecutionContext.withScope(() -> {
+            final TraceIdentity identity =
+                    new TraceIdentity("trace-2", "span-2", "00");
+            ExecutionContext.scope().setTraceIdentity(identity);
 
-            assertThat(TrackingContext.scope().getTraceIdentity()).isEqualTo(identity);
+            assertThat(ExecutionContext.scope().getTraceIdentity()).isEqualTo(identity);
         });
     }
 
@@ -75,11 +75,11 @@ class TrackingScopeMdcBridgeUnitTest {
      */
     @Test
     void shouldRemoveAllThreeMdcKeysWhenTraceIdentityClearedExplicitly() {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTraceIdentity(
-                    new TrackingScope.TraceIdentity("trace-3", "span-3", "01"));
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTraceIdentity(
+                    new TraceIdentity("trace-3", "span-3", "01"));
 
-            TrackingContext.scope().setTraceIdentity(null);
+            ExecutionContext.scope().setTraceIdentity(null);
 
             assertThat(ThreadContext.get("trace_id")).isNull();
             assertThat(ThreadContext.get("span_id")).isNull();
@@ -93,7 +93,7 @@ class TrackingScopeMdcBridgeUnitTest {
      */
     @Test
     void shouldNotInjectMdcKeysWhenNoTraceIdentityWritten() {
-        TrackingContext.withScope(() -> {
+        ExecutionContext.withScope(() -> {
             assertThat(ThreadContext.get("trace_id")).isNull();
             assertThat(ThreadContext.get("span_id")).isNull();
             assertThat(ThreadContext.get("trace_flags")).isNull();
@@ -109,10 +109,10 @@ class TrackingScopeMdcBridgeUnitTest {
     @Test
     void shouldRejectPartialTraceIdentityWithNullComponent() {
         assertThatNullPointerException().isThrownBy(
-                () -> new TrackingScope.TraceIdentity(null, "span-4", "01"));
+                () -> new TraceIdentity(null, "span-4", "01"));
         assertThatNullPointerException().isThrownBy(
-                () -> new TrackingScope.TraceIdentity("trace-4", null, "01"));
+                () -> new TraceIdentity("trace-4", null, "01"));
         assertThatNullPointerException().isThrownBy(
-                () -> new TrackingScope.TraceIdentity("trace-4", "span-4", null));
+                () -> new TraceIdentity("trace-4", "span-4", null));
     }
 }

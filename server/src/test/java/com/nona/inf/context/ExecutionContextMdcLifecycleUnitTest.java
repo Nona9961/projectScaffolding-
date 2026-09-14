@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * {@link TrackingContext#withScope(Runnable)} 跟踪身份词法作用域场景测试：
+ * {@link ExecutionContext#withScope(Runnable)} 跟踪身份词法作用域场景测试：
  * 进入时快照当前 MDC 三键（不清空——自身无值的内层作用域继承外层视角），
  * 退出时（正常与异常路径）恢复进入时状态——栈语义，池化线程复用无残留。
  * <p>
@@ -33,7 +33,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * @author nona9961
  */
 @ScaffoldGenerated
-class TrackingContextMdcLifecycleUnitTest {
+class ExecutionContextMdcLifecycleUnitTest {
 
     /**
      * 无配置提供者：仅用于 fail-closed 断言（未绑定作用域时 tracker() 在触及提供者前抛出）。
@@ -60,9 +60,9 @@ class TrackingContextMdcLifecycleUnitTest {
      */
     @Test
     void shouldClearMdcAfterTopLevelScopeExits() {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTraceIdentity(
-                    new TrackingScope.TraceIdentity("trace-a", "span-a", "01"));
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTraceIdentity(
+                    new TraceIdentity("trace-a", "span-a", "01"));
 
             assertThat(ThreadContext.get("trace_id")).isEqualTo("trace-a");
             assertThat(ThreadContext.get("span_id")).isEqualTo("span-a");
@@ -82,17 +82,17 @@ class TrackingContextMdcLifecycleUnitTest {
      */
     @Test
     void shouldRestoreOuterMdcAfterInnerScopeExits() {
-        TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTraceIdentity(
-                    new TrackingScope.TraceIdentity("outer-t", "outer-s", "00"));
+        ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTraceIdentity(
+                    new TraceIdentity("outer-t", "outer-s", "00"));
 
-            TrackingContext.withScope(() -> {
+            ExecutionContext.withScope(() -> {
                 assertThat(ThreadContext.get("trace_id")).isEqualTo("outer-t");
                 assertThat(ThreadContext.get("span_id")).isEqualTo("outer-s");
                 assertThat(ThreadContext.get("trace_flags")).isEqualTo("00");
 
-                TrackingContext.scope().setTraceIdentity(
-                        new TrackingScope.TraceIdentity("inner-t", "inner-s", "01"));
+                ExecutionContext.scope().setTraceIdentity(
+                        new TraceIdentity("inner-t", "inner-s", "01"));
 
                 assertThat(ThreadContext.get("trace_id")).isEqualTo("inner-t");
                 assertThat(ThreadContext.get("span_id")).isEqualTo("inner-s");
@@ -115,7 +115,7 @@ class TrackingContextMdcLifecycleUnitTest {
      */
     @Test
     void shouldRemoveMdcWrittenInsideScopeWhenEntryStateWasEmpty() {
-        TrackingContext.withScope(() -> ThreadContext.put("trace_id", "inner-trace"));
+        ExecutionContext.withScope(() -> ThreadContext.put("trace_id", "inner-trace"));
 
         assertThat(ThreadContext.get("trace_id")).isNull();
     }
@@ -130,7 +130,7 @@ class TrackingContextMdcLifecycleUnitTest {
         ThreadContext.put("span_id", "entry-span");
         ThreadContext.put("trace_flags", "00");
 
-        TrackingContext.withScope(() -> {
+        ExecutionContext.withScope(() -> {
             ThreadContext.put("trace_id", "inner-trace");
             ThreadContext.put("span_id", "inner-span");
             ThreadContext.put("trace_flags", "01");
@@ -152,9 +152,9 @@ class TrackingContextMdcLifecycleUnitTest {
         final ExecutorService pool = Executors.newSingleThreadExecutor();
         try {
             final AtomicReference<String> visibleInWorker = new AtomicReference<>();
-            final Future<?> task = pool.submit(() -> TrackingContext.withScope(() -> {
-                TrackingContext.scope().setTraceIdentity(
-                        new TrackingScope.TraceIdentity("worker-t", "worker-s", "01"));
+            final Future<?> task = pool.submit(() -> ExecutionContext.withScope(() -> {
+                ExecutionContext.scope().setTraceIdentity(
+                        new TraceIdentity("worker-t", "worker-s", "01"));
                 visibleInWorker.set(ThreadContext.get("trace_id"));
             }));
             task.get(5, TimeUnit.SECONDS);
@@ -183,14 +183,14 @@ class TrackingContextMdcLifecycleUnitTest {
      */
     @Test
     void shouldKeepTrackerFailClosedAndScopeUnboundAfterTraceWrite() {
-        TrackingContext.withScope(() -> {
-            assertThat(TrackingContext.scope()).isNotNull();
-            TrackingContext.scope().setTraceIdentity(
-                    new TrackingScope.TraceIdentity("trace-c", "span-c", "01"));
+        ExecutionContext.withScope(() -> {
+            assertThat(ExecutionContext.scope()).isNotNull();
+            ExecutionContext.scope().setTraceIdentity(
+                    new TraceIdentity("trace-c", "span-c", "01"));
         });
 
-        assertThat(TrackingContext.scope()).isNull();
-        assertThatThrownBy(() -> TrackingContext.tracker(PROVIDER))
+        assertThat(ExecutionContext.scope()).isNull();
+        assertThatThrownBy(() -> ExecutionContext.tracker(PROVIDER))
                 .isInstanceOf(IllegalStateException.class);
         assertThat(ThreadContext.get("trace_id")).isNull();
         assertThat(ThreadContext.get("span_id")).isNull();
@@ -205,9 +205,9 @@ class TrackingContextMdcLifecycleUnitTest {
      */
     @Test
     void shouldClearMdcAfterExceptionPathScopeExits() {
-        assertThatThrownBy(() -> TrackingContext.withScope(() -> {
-            TrackingContext.scope().setTraceIdentity(
-                    new TrackingScope.TraceIdentity("trace-b", "span-b", "01"));
+        assertThatThrownBy(() -> ExecutionContext.withScope(() -> {
+            ExecutionContext.scope().setTraceIdentity(
+                    new TraceIdentity("trace-b", "span-b", "01"));
             throw new IllegalStateException("boom");
         }))
                 .isInstanceOf(IllegalStateException.class)

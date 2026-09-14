@@ -9,7 +9,7 @@ import com.nona.changeTracking.domain.model.changeset.ChangeSet;
 import com.nona.changeTracking.domain.model.changeset.ValueChange;
 import com.nona.changeTracking.domain.model.tracking.BaselineSnapshot;
 import com.nona.changeTracking.domain.model.tracking.ChangeTracker;
-import com.nona.inf.context.TenantContextAccessor.ContextSnapshot;
+import com.nona.inf.context.ContextSnapshot;
 import com.nona.inf.persistence.tracking.ChangeTrackerProvider;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,8 +30,8 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * 异步传播升级场景测试——以「升级后契约」编写：提交线程捕获三元组 +
  * {@code trackingBaseline}（{@code tracker.captureBaseline()} 深拷贝），worker 侧
- * 经 {@code TenantContextAccessor.withSnapshot(snapshot, () ->
- * TrackingContext.withScope(task))} 嵌套绑定后，首次 {@code tracker()} 从基线重建
+ * 经 {@code ExecutionContextAccessor.withSnapshot(snapshot, () ->
+ * ExecutionContext.withScope(task))} 嵌套绑定后，首次 {@code tracker()} 从基线重建
  * （{@code ChangeTracker.fromBaseline(provider.createCapability(), baseline)}——
  * 不重脱水）。所需契约面（{@code ContextSnapshot.trackingBaseline()} 访问器与
  * {@link BaselineSnapshot}）由库 jar 提供，本测试直接锁定升级后契约。
@@ -51,10 +51,10 @@ import java.util.concurrent.atomic.AtomicReference;
 @SpringBootTest(classes = ProjectApplication.class)
 @ActiveProfiles("test")
 @ScaffoldGenerated
-class AsyncTrackingPropagationIntegrationTest {
+class AsyncExecutionContextPropagationIntegrationTest {
 
     @Autowired
-    private TenantContextAccessor tenantContextAccessor;
+    private ExecutionContextAccessor executionContextAccessor;
 
     /**
      * 无配置提供者：走 SPI 默认能力（default-reflection）。
@@ -76,24 +76,24 @@ class AsyncTrackingPropagationIntegrationTest {
     @Test
     void shouldRebuildWorkerTrackerFromCapturedBaselineAndProduceFullChangeSet() throws Exception {
         final ChangeTrackerProvider provider = newProvider();
-        final TaskDecorator decorator = new RequestContextPropagatingTaskDecorator(tenantContextAccessor);
+        final TaskDecorator decorator = new ContextPropagatingTaskDecorator(executionContextAccessor);
         final ExecutorService pool = Executors.newSingleThreadExecutor();
         try {
-            TrackingContext.withScope(() -> {
-                final ChangeTracker submitterTracker = TrackingContext.tracker(provider);
+            ExecutionContext.withScope(() -> {
+                final ChangeTracker submitterTracker = ExecutionContext.tracker(provider);
                 final TrackedEntity entity = new TrackedEntity(1L, "PENDING");
                 submitterTracker.track(entity);                // 登记基线（读时状态）
                 entity.setStatus("CONFIRMED");                 // 业务修改（异步提交前）
 
                 // 提交时刻快照：三元组 + 基线（深拷贝导出）一并随任务传播
-                final ContextSnapshot captured = tenantContextAccessor.captureSnapshot();
+                final ContextSnapshot captured = executionContextAccessor.captureSnapshot();
                 final BaselineSnapshot baseline = captured.trackingBaseline();
                 assertThat(baseline).isNotNull();
 
                 final AtomicReference<ChangeSet> workerChanges = new AtomicReference<>();
                 final Runnable task = () -> {
-                    assertThat(TrackingContext.scope()).isNotNull();          // 嵌套越 scope 生效
-                    final ChangeTracker workerTracker = TrackingContext.tracker(provider);
+                    assertThat(ExecutionContext.scope()).isNotNull();          // 嵌套越 scope 生效
+                    final ChangeTracker workerTracker = ExecutionContext.tracker(provider);
                     assertThat(workerTracker).isNotSameAs(submitterTracker);  // 独立实例重建
                     workerChanges.set(workerTracker.calculateChanges());
                 };
@@ -137,12 +137,12 @@ class AsyncTrackingPropagationIntegrationTest {
     @Test
     void nestedDispatchShouldInheritOuterSnapshotAndCurrentBaseline() throws Exception {
         final ChangeTrackerProvider provider = newProvider();
-        final TaskDecorator decorator = new RequestContextPropagatingTaskDecorator(tenantContextAccessor);
+        final TaskDecorator decorator = new ContextPropagatingTaskDecorator(executionContextAccessor);
         final ExecutorService outerPool = Executors.newSingleThreadExecutor();
         final ExecutorService innerPool = Executors.newSingleThreadExecutor();
         try {
-            TrackingContext.withScope(() -> {
-                final ChangeTracker outerTracker = TrackingContext.tracker(provider);
+            ExecutionContext.withScope(() -> {
+                final ChangeTracker outerTracker = ExecutionContext.tracker(provider);
                 final TrackedEntity entityA = new TrackedEntity(1L, "PENDING");
                 outerTracker.track(entityA);
                 entityA.setStatus("CONFIRMED");
@@ -150,13 +150,13 @@ class AsyncTrackingPropagationIntegrationTest {
                 final AtomicReference<List<ValueChange>> nestedChanges = new AtomicReference<>();
                 try {
                     outerPool.submit(decorator.decorate(() -> {
-                        final ChangeTracker workerTracker = TrackingContext.tracker(provider);
+                        final ChangeTracker workerTracker = ExecutionContext.tracker(provider);
                         final TrackedEntity entityB = new TrackedEntity(2L, "NEW");
                         workerTracker.track(entityB);
                         entityB.setStatus("ACTIVE");
 
                         final Runnable innerTask = () -> {
-                            final ChangeTracker worker2Tracker = TrackingContext.tracker(provider);
+                            final ChangeTracker worker2Tracker = ExecutionContext.tracker(provider);
                             nestedChanges.set(worker2Tracker.calculateChanges().getLeafChanges().stream()
                                     .filter(ValueChange.class::isInstance)
                                     .map(ValueChange.class::cast)
@@ -208,19 +208,19 @@ class AsyncTrackingPropagationIntegrationTest {
     @Test
     void shouldKeepBaselineNullAndCreatePlainTrackerForReadOnlyTask() throws Exception {
         final ChangeTrackerProvider provider = newProvider();
-        final TaskDecorator decorator = new RequestContextPropagatingTaskDecorator(tenantContextAccessor);
+        final TaskDecorator decorator = new ContextPropagatingTaskDecorator(executionContextAccessor);
         final ExecutorService pool = Executors.newSingleThreadExecutor();
         try {
-            TrackingContext.withScope(() -> {
+            ExecutionContext.withScope(() -> {
                 // 纯读：不触碰 tracker()——捕获快照 baseline 为 null
-                final ContextSnapshot captured = tenantContextAccessor.captureSnapshot();
+                final ContextSnapshot captured = executionContextAccessor.captureSnapshot();
                 final BaselineSnapshot baseline = captured.trackingBaseline();
                 assertThat(baseline).isNull();
 
                 try {
                     pool.submit(decorator.decorate(() -> {
-                        assertThat(TrackingContext.scope()).isNotNull();
-                        final ChangeTracker workerTracker = TrackingContext.tracker(provider);
+                        assertThat(ExecutionContext.scope()).isNotNull();
+                        final ChangeTracker workerTracker = ExecutionContext.tracker(provider);
                         assertThat(workerTracker.calculateChanges().isEmpty()).isTrue();
                     })).get(5, TimeUnit.SECONDS);
                 } catch (InterruptedException e) {
@@ -246,14 +246,14 @@ class AsyncTrackingPropagationIntegrationTest {
     @Test
     void pooledThreadReuseShouldNotLeakWorkerScopeBinding() throws Exception {
         final ChangeTrackerProvider provider = newProvider();
-        final TaskDecorator decorator = new RequestContextPropagatingTaskDecorator(tenantContextAccessor);
+        final TaskDecorator decorator = new ContextPropagatingTaskDecorator(executionContextAccessor);
         final ExecutorService pool = Executors.newSingleThreadExecutor();
         try {
-            TrackingContext.withScope(() -> {
-                TrackingContext.tracker(provider);             // 提交线程建立 tracker（导出路径）
+            ExecutionContext.withScope(() -> {
+                ExecutionContext.tracker(provider);             // 提交线程建立 tracker（导出路径）
                 try {
                     pool.submit(decorator.decorate(() ->
-                            assertThat(TrackingContext.scope()).isNotNull())).get(5, TimeUnit.SECONDS);
+                            assertThat(ExecutionContext.scope()).isNotNull())).get(5, TimeUnit.SECONDS);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     throw new IllegalStateException("async task interrupted", e);
@@ -265,8 +265,8 @@ class AsyncTrackingPropagationIntegrationTest {
             });
 
             // 同一池化线程、未经装饰的裸任务：无 scope 残留
-            final AtomicReference<TrackingScope> residue = new AtomicReference<>();
-            pool.submit(() -> residue.set(TrackingContext.scope())).get(5, TimeUnit.SECONDS);
+            final AtomicReference<ExecutionContextState> residue = new AtomicReference<>();
+            pool.submit(() -> residue.set(ExecutionContext.scope())).get(5, TimeUnit.SECONDS);
             assertThat(residue.get()).isNull();
         } finally {
             pool.shutdownNow();
@@ -280,21 +280,21 @@ class AsyncTrackingPropagationIntegrationTest {
     @Test
     void exceptionPathShouldAutoRestoreWorkerScopeBinding() throws Exception {
         final ChangeTrackerProvider provider = newProvider();
-        final TaskDecorator decorator = new RequestContextPropagatingTaskDecorator(tenantContextAccessor);
+        final TaskDecorator decorator = new ContextPropagatingTaskDecorator(executionContextAccessor);
         final ExecutorService pool = Executors.newSingleThreadExecutor();
         try {
-            TrackingContext.withScope(() -> {
-                TrackingContext.tracker(provider);
+            ExecutionContext.withScope(() -> {
+                ExecutionContext.tracker(provider);
                 assertThatThrownBy(() -> pool.submit(decorator.decorate(() -> {
-                    assertThat(TrackingContext.scope()).isNotNull();
+                    assertThat(ExecutionContext.scope()).isNotNull();
                     throw new IllegalStateException("boom");
                 })).get(5, TimeUnit.SECONDS))
                         .isInstanceOf(ExecutionException.class)
                         .hasCauseInstanceOf(IllegalStateException.class);
             });
 
-            final AtomicReference<TrackingScope> residue = new AtomicReference<>();
-            pool.submit(() -> residue.set(TrackingContext.scope())).get(5, TimeUnit.SECONDS);
+            final AtomicReference<ExecutionContextState> residue = new AtomicReference<>();
+            pool.submit(() -> residue.set(ExecutionContext.scope())).get(5, TimeUnit.SECONDS);
             assertThat(residue.get()).isNull();
         } finally {
             pool.shutdownNow();
@@ -309,18 +309,18 @@ class AsyncTrackingPropagationIntegrationTest {
     @Test
     void baselineDeepCopyShouldIsolateWorkerFromSubmitterLaterTracking() throws Exception {
         final ChangeTrackerProvider provider = newProvider();
-        final TaskDecorator decorator = new RequestContextPropagatingTaskDecorator(tenantContextAccessor);
+        final TaskDecorator decorator = new ContextPropagatingTaskDecorator(executionContextAccessor);
         final ExecutorService pool = Executors.newSingleThreadExecutor();
         try {
-            TrackingContext.withScope(() -> {
-                final ChangeTracker submitterTracker = TrackingContext.tracker(provider);
+            ExecutionContext.withScope(() -> {
+                final ChangeTracker submitterTracker = ExecutionContext.tracker(provider);
                 final TrackedEntity entityA = new TrackedEntity(1L, "PENDING");
                 submitterTracker.track(entityA);
                 entityA.setStatus("CONFIRMED");                // 业务修改
 
                 // 装饰器在提交线程捕获：此刻基线仅含 entityA（深拷贝导出）
                 final Runnable decorated = decorator.decorate(() -> {
-                    final ChangeTracker workerTracker = TrackingContext.tracker(provider);
+                    final ChangeTracker workerTracker = ExecutionContext.tracker(provider);
                     final ChangeSet changeSet = workerTracker.calculateChanges();
                     assertThat(changeSet.changes()).hasSize(1);              // 仅 entityA
                     assertThat(changeSet.changes().get(0).target()).isSameAs(entityA);
