@@ -3,7 +3,8 @@
     <Properties>
         <Property name="LOG_PATTERN">%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n</Property>
         <!-- 部署可用挂载卷目录覆盖；未设置时回落到工作目录下的 ./logs -->
-        <Property name="LOG_PATH">${env:LOG_PATH:-./logs}</Property>
+        <!-- 属性名不得与 LOG_PATH 环境变量键同名：同名会触发 log4j2 插值自引用告警（LOG_PATH->env:LOG_PATH） -->
+        <Property name="APP_LOG_PATH">${env:LOG_PATH:-./logs}</Property>
     </Properties>
 
     <Appenders>
@@ -14,15 +15,15 @@
 
         <!-- 文件输出：JSON-OTel 布局 + 时间/大小双触发滚动 + 归档数量与总量双封顶；异步由 AsyncLoggerContextSelector 承担 -->
         <RollingFile name="RollingFileAsync"
-                     fileName="${LOG_PATH}/app.log"
-                     filePattern="${LOG_PATH}/archive/app-%d{yyyy-MM-dd}-%i.log.gz">
+                     fileName="${APP_LOG_PATH}/app.log"
+                     filePattern="${APP_LOG_PATH}/archive/app-%d{yyyy-MM-dd}-%i.log.gz">
             <JsonTemplateLayout eventTemplateUri="classpath:log_event_template.json"/>
             <Policies>
                 <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
                 <SizeBasedTriggeringPolicy size="500 MB"/>
             </Policies>
             <DefaultRolloverStrategy max="30">
-                <Delete basePath="${LOG_PATH}/archive" maxDepth="1">
+                <Delete basePath="${APP_LOG_PATH}/archive" maxDepth="1">
                     <IfFileName glob="app-*.log.gz"/>
                     <IfAccumulatedFileSize exceeds="10 GB"/>
                 </Delete>
