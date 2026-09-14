@@ -4,7 +4,6 @@ import com.nona.annotation.ScaffoldGenerated;
 import com.nona.changeTracking.domain.model.tracking.ChangeTracker;
 import com.nona.inf.persistence.tracking.ChangeTrackerProvider;
 import jakarta.annotation.Nullable;
-import org.apache.logging.log4j.ThreadContext;
 
 import java.util.Objects;
 
@@ -14,9 +13,9 @@ import java.util.Objects;
  * <p>
  * 语义要点：
  * <ul>
- *   <li><b>词法作用域</b>：{@link #withScope(Runnable)} 绑定空 holder；作用域退出
- *       （含异常路径）自动恢复 unbound，无需手动清理，池化线程复用无残留（JEP 506 语义）</li>
- *   <li><b>懒创建</b>：入口绑定空 holder（引用级开销）；首次 {@link #tracker(ChangeTrackerProvider)}
+ *   <li><b>词法作用域</b>：{@link #withScope(Runnable)} 绑定新的持有者并继承当前可见跟踪身份；
+ *       作用域退出（含异常路径）自动恢复 unbound，无需手动清理，池化线程复用无残留（JEP 506 语义）</li>
+ *   <li><b>懒创建</b>：入口绑定新持有者（引用级开销）；首次 {@link #tracker(ChangeTrackerProvider)}
  *       调用才经提供者创建追踪器并留存——非 DB 访问路径零追踪开销</li>
  *   <li><b>fail-closed</b>：未绑定作用域时调用 {@link #tracker(ChangeTrackerProvider)}
  *       抛出 {@link IllegalStateException}（提示缺失入口组件注册），不静默降级</li>
@@ -37,12 +36,11 @@ public final class ExecutionContext {
     }
 
     /**
-     * 在新建的执行作用域内执行 {@code action}：绑定新的空 {@link ExecutionContextState} 持有者，
+     * 在新建的执行作用域内执行 {@code action}：绑定一个新的 {@link ExecutionContextState} 持有者，
      * 退出（含异常路径）自动恢复 unbound。
      * <p>
-     * MDC 三键（{@code trace_id} / {@code span_id} / {@code trace_flags}）按栈语义管理：
-     * 进入时快照当前线程取值（不清空——未写入跟踪身份的内层作用域继承外层视角），
-     * 退出（含异常路径）恢复入口状态——作用域边界即 MDC 生命周期边界，池化线程复用无残留。
+     * 新持有者继承「当前可见跟踪身份」：外层持有者身份优先，无持有者时回退已绑定快照的
+     * 跟踪身份——未写入身份的内层作用域与异步 worker 保持外层视角。
      * <p>
      * 所有请求 / 任务入口（HTTP 过滤器、异步任务装饰器等）必须以本方法包裹任务体；
      * 不包裹时线程即为未绑定（fail-closed）。
@@ -50,17 +48,9 @@ public final class ExecutionContext {
      * @param action 绑定作用域内执行的操作
      */
     public static void withScope(Runnable action) {
-        final String entryTraceId = ThreadContext.get(ExecutionContextState.MDC_TRACE_ID);
-        final String entrySpanId = ThreadContext.get(ExecutionContextState.MDC_SPAN_ID);
-        final String entryTraceFlags = ThreadContext.get(ExecutionContextState.MDC_TRACE_FLAGS);
-        try {
-            ScopedValue.where(STATE, new ExecutionContextState()).run(action);
-        }
-        finally {
-            restoreMdcKey(ExecutionContextState.MDC_TRACE_ID, entryTraceId);
-            restoreMdcKey(ExecutionContextState.MDC_SPAN_ID, entrySpanId);
-            restoreMdcKey(ExecutionContextState.MDC_TRACE_FLAGS, entryTraceFlags);
-        }
+        final ExecutionContextState state = new ExecutionContextState();
+        state.setTraceIdentity(ExecutionContextAccessor.visibleTraceIdentity());
+        ScopedValue.where(STATE, state).run(action);
     }
 
     /**
@@ -71,6 +61,20 @@ public final class ExecutionContext {
     @Nullable
     public static ExecutionContextState scope() {
         return STATE.isBound() ? STATE.get() : null;
+    }
+
+    /**
+     * 读取当前作用域的跟踪身份（holder-only，不做快照回退）。
+     * <p>
+     * 供日志侧消费者在事件创建时拉取；作用域内显式清除（{@code setTraceIdentity(null)}）后
+     * 即无身份，不得被跨线程快照复活。
+     *
+     * @return 当前作用域的跟踪身份；未绑定作用域或该作用域无身份时为 {@code null}
+     */
+    @Nullable
+    public static TraceIdentity currentTraceIdentity() {
+        final ExecutionContextState current = scope();
+        return current != null ? current.getTraceIdentity() : null;
     }
 
     /**
@@ -92,19 +96,5 @@ public final class ExecutionContext {
                     "未绑定执行作用域：请经入口组件（ExecutionContextFilter / 任务传播装饰器）以 ExecutionContext.withScope 包裹任务体后调用");
         }
         return current.getOrCreateTracker(provider);
-    }
-
-    /**
-     * 恢复单个 MDC 键到进入作用域时的状态：入口有值 → put 回；入口缺失 → remove。
-     *
-     * @param key        MDC 键名
-     * @param entryValue 进入作用域时的取值；入口缺失时为 {@code null}
-     */
-    private static void restoreMdcKey(String key, @Nullable String entryValue) {
-        if (entryValue == null) {
-            ThreadContext.remove(key);
-            return;
-        }
-        ThreadContext.put(key, entryValue);
     }
 }

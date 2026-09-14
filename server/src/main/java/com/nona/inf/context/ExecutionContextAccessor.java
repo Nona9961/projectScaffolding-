@@ -4,7 +4,6 @@ import com.nona.annotation.ScaffoldGenerated;
 import com.nona.changeTracking.domain.model.tracking.BaselineSnapshot;
 import com.nona.tenant.TenantWriteGate;
 import jakarta.annotation.Nullable;
-import org.apache.logging.log4j.ThreadContext;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -52,40 +51,22 @@ public class ExecutionContextAccessor {
      * 在指定快照的绑定作用域内执行 {@code action}；作用域退出（含异常路径）自动恢复 unbound。
      * <p>
      * 跨线程传播的统一入口：提交线程经 {@link #captureSnapshot()} 捕获，worker 线程以本方法
-     * 包裹任务体。不调用本方法时线程即无回退（fail-closed）。
-     * <p>
-     * MDC 三键重放：进入时快照当前线程取值，快照携带跟踪身份
-     * （{@link ContextSnapshot#traceIdentity()} 非 {@code null}）时三键整体覆盖；
-     * 退出（含异常路径）恢复入口状态。快照无跟踪身份时不清空、不覆盖——继承线程当前视角。
+     * 包裹任务体。快照携带的跟踪身份在其后嵌套的 {@link ExecutionContext#withScope(Runnable)}
+     * 中被继承为作用域可见身份（异步 worker 保持提交线程视角）；本方法自身只绑定快照。
+     * 不调用本方法时线程即无回退（fail-closed）。
      *
      * @param snapshot 要绑定的快照；不得为 {@code null}（无需传播时不要调用本方法）
      * @param action   绑定作用域内执行的操作
      */
     public static void withSnapshot(ContextSnapshot snapshot, Runnable action) {
-        final String entryTraceId = ThreadContext.get(ExecutionContextState.MDC_TRACE_ID);
-        final String entrySpanId = ThreadContext.get(ExecutionContextState.MDC_SPAN_ID);
-        final String entryTraceFlags = ThreadContext.get(ExecutionContextState.MDC_TRACE_FLAGS);
-        final TraceIdentity traceIdentity = snapshot.traceIdentity();
-        if (traceIdentity != null) {
-            ThreadContext.put(ExecutionContextState.MDC_TRACE_ID, traceIdentity.traceId());
-            ThreadContext.put(ExecutionContextState.MDC_SPAN_ID, traceIdentity.spanId());
-            ThreadContext.put(ExecutionContextState.MDC_TRACE_FLAGS, traceIdentity.traceFlags());
-        }
-        try {
-            ScopedValue.where(SNAPSHOT, snapshot).run(action);
-        }
-        finally {
-            restoreMdcKey(ExecutionContextState.MDC_TRACE_ID, entryTraceId);
-            restoreMdcKey(ExecutionContextState.MDC_SPAN_ID, entrySpanId);
-            restoreMdcKey(ExecutionContextState.MDC_TRACE_FLAGS, entryTraceFlags);
-        }
+        ScopedValue.where(SNAPSHOT, snapshot).run(action);
     }
 
     /**
      * 读取当前线程已绑定的快照；未绑定时返回 {@code null}。
      * <p>
-     * 包可见：供同包 {@link ExecutionContextState} 首次创建钩子读取
-     * SNAPSHOT 槽的 {@code trackingBaseline}（异步 worker 基线重建判定）；
+     * 包可见：供同包 {@link ExecutionContextState} 首次创建钩子（读取 SNAPSHOT 槽的
+     * {@code trackingBaseline}）与 {@link #visibleTraceIdentity()} 消费；
      * 仅限包内消费，不对外暴露。
      *
      * @return 绑定中的快照；未绑定返回 {@code null}
@@ -96,17 +77,22 @@ public class ExecutionContextAccessor {
     }
 
     /**
-     * 恢复单个 MDC 键到进入绑定作用域时的状态：入口有值 → put 回；入口缺失 → remove。
+     * 解析当前线程的可见跟踪身份：作用域持有者身份整体优先，否则回退已绑定快照的
+     * 跟踪身份；两源皆无 → {@code null}。
+     * <p>
+     * 包可见：供同包 {@link ExecutionContext#withScope(Runnable)}（进入新作用域时继承）与
+     * {@link #captureSnapshot()}（跨线程捕获）共用同一解析，避免双实现漂移。
      *
-     * @param key        MDC 键名
-     * @param entryValue 进入作用域时的取值；入口缺失时为 {@code null}
+     * @return 可见跟踪身份；无从可取得时为 {@code null}
      */
-    private static void restoreMdcKey(String key, @Nullable String entryValue) {
-        if (entryValue == null) {
-            ThreadContext.remove(key);
-            return;
+    @Nullable
+    static TraceIdentity visibleTraceIdentity() {
+        final ExecutionContextState scope = ExecutionContext.scope();
+        if (scope != null && scope.getTraceIdentity() != null) {
+            return scope.getTraceIdentity();
         }
-        ThreadContext.put(key, entryValue);
+        final ContextSnapshot bound = boundSnapshot();
+        return bound != null ? bound.traceIdentity() : null;
     }
 
     /**
@@ -158,25 +144,6 @@ public class ExecutionContextAccessor {
     }
 
     /**
-     * 整体解析：holder 跟踪身份非空才取（不做字段级拼接）；否则回退 boundSnapshot；
-     * 两源皆无 → {@code null}。
-     */
-    @Nullable
-    private static TraceIdentity traceIdentityOrNull(
-            @Nullable ExecutionContextState scope, @Nullable ContextSnapshot bound) {
-        if (scope != null) {
-            final TraceIdentity holderIdentity = scope.getTraceIdentity();
-            if (holderIdentity != null) {
-                return holderIdentity;
-            }
-        }
-        if (bound != null) {
-            return bound.traceIdentity();
-        }
-        return null;
-    }
-
-    /**
      * 捕获当前上下文身份三元组（tenantID / role / identity）、追踪基线与跟踪身份，供跨线程传播。
      * <p>
      * 解析顺序：{@link ExecutionContext#scope()} 持有者优先——无作用域时读当前线程已绑定快照
@@ -188,9 +155,10 @@ public class ExecutionContextAccessor {
      * 懒语义不被捕获动作破坏）；无作用域或尚无追踪器时基线为 {@code null}（合法态，
      * worker 侧走普通创建路径）。
      * <p>
-     * <strong>跟踪身份</strong>：整体捕获（三元组原子，无字段级回退）——作用域持有者
-     * （{@link ExecutionContextState#getTraceIdentity()}）非空取持有者，否则回退已绑定快照的
-     * 跟踪身份；两源皆无 → {@code null}（合法态：无 trace 身份）。
+     * <strong>跟踪身份</strong>：整体捕获（三分量原子，无字段级回退）——与
+     * {@link ExecutionContext#withScope(Runnable)} 的继承解析共用
+     * {@link #visibleTraceIdentity()}：作用域持有者非空取持有者，否则回退已绑定快照的
+     * 跟踪身份；两源皆无 → {@code null}（合法态：无跟踪身份）。
      *
      * @return 当前上下文快照（三元组 + 可能存在的追踪基线与跟踪身份）；三元组按字段级解析：
      *         holder 有值取 holder，否则回退 boundSnapshot，两源皆无 → {@code null}
@@ -209,7 +177,7 @@ public class ExecutionContextAccessor {
                 roleOrNull(scope, bound),
                 identityOrNull(scope, bound),
                 trackingBaseline,
-                traceIdentityOrNull(scope, bound)
+                visibleTraceIdentity()
         );
     }
 

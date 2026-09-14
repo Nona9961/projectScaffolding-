@@ -5,7 +5,7 @@ import com.nona.annotation.ScaffoldGenerated;
 import java.util.Objects;
 
 /**
- * 跟踪身份的不可变值对象（{@code trace_id} / {@code span_id} / {@code trace_flags} 三元组）。
+ * 跟踪身份的不可变值对象（W3C trace-id / span-id / trace-flags 三分量）。
  * <p>
  * 三分量整体语义：不存在「半个跟踪身份」——构造即拒绝 {@code null} 分量，
  * 「不存在」由整个值为 {@code null} 表达。供执行上下文与跨线程快照共享。

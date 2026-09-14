@@ -4,7 +4,6 @@ import com.nona.annotation.ScaffoldGenerated;
 import com.nona.changeTracking.domain.model.tracking.ChangeTracker;
 import com.nona.inf.persistence.tracking.ChangeTrackerProvider;
 import jakarta.annotation.Nullable;
-import org.apache.logging.log4j.ThreadContext;
 
 import java.util.List;
 import java.util.Map;
@@ -20,10 +19,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>
  * 承载内容：
  * <ul>
- *   <li>三元组（tenantID / role / identity）：消费者授权过滤器的迁移写入目标
- *       （原 {@code threadContext.setX} 路径改为本持有者 setter，须运行在 {@link ExecutionContext#withScope} 作用域内）</li>
- *   <li>跟踪身份（trace_id / span_id / trace_flags，{@link TraceIdentity}）：写入即原子同步
- *       MDC 三键（{@link #setTraceIdentity(TraceIdentity)}），日志布局据此输出 trace 字段</li>
+ *   <li>三元组（tenantID / role / identity）：消费者授权过滤器在作用域内的写入目标
+ *       （经本持有者 setter 写入，须运行在 {@link ExecutionContext#withScope} 作用域内）</li>
+ *   <li>跟踪身份（{@link TraceIdentity}）：作用域内整体写入 / 整体清除的纯状态
+ *       （{@link #setTraceIdentity(TraceIdentity)}），不产生线程级副作用——
+ *       日志侧消费者（拉取模式）在需要时经 {@link ExecutionContext#currentTraceIdentity()} 读取</li>
  *   <li>{@code snapshots}：根对象注册表（{@code DifferRepository.isTracked} 读、快照登记写）</li>
  *   <li>{@code tracker}：懒创建——首次 {@link #getOrCreateTracker} 时才创建并留存，
  *       非 DB 访问路径永不创建；异步 worker 场景（SNAPSHOT 槽携带非空
@@ -35,21 +35,6 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @ScaffoldGenerated
 public final class ExecutionContextState {
-
-    /**
-     * MDC 键：W3C trace-id（日志布局字段契约，不得改名）。
-     */
-    static final String MDC_TRACE_ID = "trace_id";
-
-    /**
-     * MDC 键：W3C span-id（日志布局字段契约，不得改名）。
-     */
-    static final String MDC_SPAN_ID = "span_id";
-
-    /**
-     * MDC 键：W3C trace-flags（日志布局字段契约，不得改名）。
-     */
-    static final String MDC_TRACE_FLAGS = "trace_flags";
 
     /**
      * 当前租户 ID
@@ -67,9 +52,9 @@ public final class ExecutionContextState {
     private String identity;
 
     /**
-     * 当前作用域的跟踪身份（trace_id / span_id / trace_flags）；未写入时为 {@code null}。
+     * 当前作用域的跟踪身份（{@link TraceIdentity}）；未写入时为 {@code null}。
      * <p>
-     * 整体写入 / 整体清除：写入即同步 MDC 三键，不存在部分更新窗口。
+     * 整体写入 / 整体清除：不存在部分更新窗口。
      */
     private TraceIdentity traceIdentity;
 
@@ -151,25 +136,16 @@ public final class ExecutionContextState {
     }
 
     /**
-     * 设置当前作用域的跟踪身份，并原子同步 MDC 三键（{@code trace_id} / {@code span_id} /
-     * {@code trace_flags}）：非 {@code null} → 三键整体 put；{@code null} → 三键整体 remove。
+     * 设置当前作用域的跟踪身份（纯字段写入）：非 {@code null} 整体写入、
+     * {@code null} 整体清除——OTel span context 语义，不存在部分更新窗口。
      * <p>
-     * 与三元组 setter 同一写入路径（须运行在 {@link ExecutionContext#withScope} 作用域内）。
-     * 整体写入是 OTel span context 语义——部分更新的三元组构成不一致窗口。
+     * 与三元组 setter 同一写入路径（须运行在 {@link ExecutionContext#withScope} 作用域内）；
+     * 写入不产生任何线程级副作用，显式清除后该作用域即无身份。
      *
-     * @param traceIdentity 跟踪身份；传 {@code null} 表示清除（三键整体移除）
+     * @param traceIdentity 跟踪身份；传 {@code null} 表示清除
      */
     public void setTraceIdentity(@Nullable TraceIdentity traceIdentity) {
         this.traceIdentity = traceIdentity;
-        if (traceIdentity == null) {
-            ThreadContext.remove(MDC_TRACE_ID);
-            ThreadContext.remove(MDC_SPAN_ID);
-            ThreadContext.remove(MDC_TRACE_FLAGS);
-            return;
-        }
-        ThreadContext.put(MDC_TRACE_ID, traceIdentity.traceId());
-        ThreadContext.put(MDC_SPAN_ID, traceIdentity.spanId());
-        ThreadContext.put(MDC_TRACE_FLAGS, traceIdentity.traceFlags());
     }
 
     /**
