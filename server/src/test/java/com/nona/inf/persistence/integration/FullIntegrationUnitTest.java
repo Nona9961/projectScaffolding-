@@ -1992,8 +1992,8 @@ class FullIntegrationUnitTest {
         }
 
         @Test
-        @DisplayName("子表删除应该返回删除 ID")
-        void shouldReconstructDeletedChildId() {
+        @DisplayName("成员移除应该返回删除类型与标识")
+        void shouldReconstructDeletionTypeAndIdOnMemberRemoved() {
             // Given
             Order order = new Order(1L, "ORD-001");
             OrderItem item = new OrderItem(101L, "SKU-001", "iPhone", 1, Money.of(new java.math.BigDecimal("5999")));
@@ -2010,9 +2010,10 @@ class FullIntegrationUnitTest {
             ChangeSet changeSet = changeTracker.calculateChanges();
             var result = poReconstructor.reconstruct(loaded, changeSet);
 
-            // Then
-            assertThat(result.getToDeleteIds(OrderItemPO.class)).hasSize(1);
-            assertThat(result.getToDeleteIds(OrderItemPO.class).get(0)).isEqualTo(101L);
+            // Then：待删除信息的类型与标识均正确，且不误产主表保存
+            assertThat(result.toDelete()).hasSize(1);
+            assertThat(result.toDelete().get(0).poClass()).isEqualTo(OrderItemPO.class);
+            assertThat(result.getToDeleteIds(OrderItemPO.class)).containsExactly(101L);
         }
 
         @Test
@@ -2074,6 +2075,151 @@ class FullIntegrationUnitTest {
             // 子表 toDelete: 删除的 item2 = 1
             assertThat(result.getToDeleteIds(OrderItemPO.class)).hasSize(1);
             assertThat(result.getToDeleteIds(OrderItemPO.class).get(0)).isEqualTo(102L);
+        }
+
+        @Test
+        @DisplayName("整体赋值：单对象从 null 赋值不新增子表操作，主表被标记保存")
+        void shouldReconstructMainPoOnObjectWholeAssignment() {
+            // Given：order 初始无 customer
+            Order order = new Order(1L, "ORD-001");
+            insertOrder(orderConverter.toMainPO(order));
+
+            Order loaded = loadOrder(1L);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
+
+            // When：customer 从 null 整体赋值为一个对象（原子 ObjectFieldChange）
+            loaded.setCustomer(new Customer(10L, "张三"));
+            ChangeSet changeSet = changeTracker.calculateChanges();
+            var result = poReconstructor.reconstruct(loaded, changeSet);
+
+            // Then：对象字段的整体赋值归属主对象边界——主表被标记保存，不产生子表新增操作
+            assertThat(result.getToSave(OrderPO.class)).hasSize(1);
+            assertThat(result.toSave()).hasSize(1);
+            assertThat(result.toDelete()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("清空：单对象置为 null 被识别为主对象变更，不产生子表删除操作")
+        void shouldReconstructMainPoOnObjectClear() {
+            // Given：order 初始有 customer
+            Order order = new Order(1L, "ORD-001");
+            Customer customer = new Customer(10L, "张三");
+            order.setCustomer(customer);
+            insertOrder(orderConverter.toMainPO(order));
+            insertCustomer(customer, order.getId());
+
+            Order loaded = loadOrder(1L);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
+
+            // When：customer 整体清空为 null（原子 ObjectFieldChange）
+            loaded.setCustomer(null);
+            ChangeSet changeSet = changeTracker.calculateChanges();
+            var result = poReconstructor.reconstruct(loaded, changeSet);
+
+            // Then：清空归属主对象边界——主表被标记保存，不产生子表删除操作
+            assertThat(result.getToSave(OrderPO.class)).hasSize(1);
+            assertThat(result.getToDeleteIds(OrderItemPO.class)).isEmpty();
+            assertThat(result.toDelete()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("整体赋值：值对象替换保留前后业务值作主表载荷")
+        void shouldReconstructMainPoOnValueObjectWholeAssignment() {
+            // Given
+            Order order = new Order(1L, "ORD-001");
+            order.setTotalAmount(Money.of(new java.math.BigDecimal("100.00")));
+            insertOrder(orderConverter.toMainPO(order));
+
+            Order loaded = loadOrder(1L);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
+
+            // When：值对象整体替换（金额 + 币种）
+            loaded.setTotalAmount(new Money(new java.math.BigDecimal("200.00"), "USD"));
+            ChangeSet changeSet = changeTracker.calculateChanges();
+            var result = poReconstructor.reconstruct(loaded, changeSet);
+
+            // Then：变更侧保留前后业务值（原子 ValueChange）；主表 PO 被标记保存，载荷为替换后的值对象内容
+            assertThat(changeSet.getLeafChanges()).singleElement()
+                    .isInstanceOfSatisfying(ValueChange.class, change -> {
+                        assertThat(change.path()).isEqualTo("totalAmount");
+                        assertThat(((Money) change.oldValue()).amount()).isEqualByComparingTo("100.00");
+                        assertThat(((Money) change.oldValue()).currency()).isEqualTo("CNY");
+                        assertThat(((Money) change.newValue()).amount()).isEqualByComparingTo("200.00");
+                        assertThat(((Money) change.newValue()).currency()).isEqualTo("USD");
+                    });
+            assertThat(result.getToSave(OrderPO.class)).hasSize(1);
+            OrderPO mainPo = result.getToSave(OrderPO.class).get(0);
+            assertThat(mainPo.getTotalAmount()).isEqualByComparingTo(new java.math.BigDecimal("200.00"));
+            assertThat(mainPo.getTotalCurrency()).isEqualTo("USD");
+            assertThat(result.toDelete()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("清空：集合整体清空产生逐项删除（类型与标识均正确）")
+        void shouldReconstructAllDeletionsWhenCollectionCleared() {
+            // Given
+            Order order = new Order(1L, "ORD-001");
+            OrderItem item1 = new OrderItem(101L, "SKU-001", "iPhone", 1, Money.of(new java.math.BigDecimal("5999")));
+            OrderItem item2 = new OrderItem(102L, "SKU-002", "iPad", 1, Money.of(new java.math.BigDecimal("3999")));
+            order.getItems().add(item1);
+            order.getItems().add(item2);
+            insertOrder(orderConverter.toMainPO(order));
+            insertOrderItem(item1, order.getId());
+            insertOrderItem(item2, order.getId());
+
+            Order loaded = loadOrder(1L);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
+
+            // When：集合整体清空
+            loaded.getItems().clear();
+            ChangeSet changeSet = changeTracker.calculateChanges();
+            var result = poReconstructor.reconstruct(loaded, changeSet);
+
+            // Then：逐项删除，每项均为 OrderItemPO 且标识正确
+            assertThat(result.toDelete()).hasSize(2)
+                    .allSatisfy(info -> assertThat(info.poClass()).isEqualTo(OrderItemPO.class));
+            assertThat(result.getToDeleteIds(OrderItemPO.class)).containsExactlyInAnyOrder(101L, 102L);
+            assertThat(result.toSave()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("嵌套集合字段变更不归属已注册子表（不扩大持久化支持范围）")
+        void shouldNotClassifyNestedCollectionChangeAsChildTableChange() {
+            // Given：items 的子集合 subItems 中字段变更
+            Order order = new Order(1L, "ORD-001");
+            OrderItem item = new OrderItem(101L, "SKU-001", "商品A", 2, Money.of(new java.math.BigDecimal("30.00")));
+            SubItem subItem = new SubItem(1001L, "子项1");
+            item.getSubItems().add(subItem);
+            order.getItems().add(item);
+            insertOrder(orderConverter.toMainPO(order));
+            insertOrderItem(item, order.getId());
+
+            Order loaded = loadOrder(1L);
+            ChangeTracker changeTracker = new ChangeTracker(trackingProvider.create());
+            changeTracker.track(loaded);
+
+            // When：只修改嵌套集合（subItems）中的字段
+            loaded.getItems().get(0).getSubItems().get(0).setName("子项1改");
+            ChangeSet changeSet = changeTracker.calculateChanges();
+            var result = poReconstructor.reconstruct(loaded, changeSet);
+
+            // Then：先证明该嵌套集合字段变更确实被检出（而非“无变更”），且位置归为最近集合字段 subItems
+            assertThat(changeSet.isEmpty()).isFalse();
+            assertThat(changeSet.getLeafChanges()).isNotEmpty();
+            assertThat(changeSet.getLeafChanges()).anySatisfy(leaf -> {
+                assertThat(leaf).isInstanceOf(ValueChange.class);
+                assertThat(leaf.path()).isEqualTo("items[101].subItems[1001].name");
+                assertThat(leaf.collectionFieldName()).isEqualTo("subItems");
+            });
+            // subItems 未注册子表转换器，故按消费方既有分派规则归入主表桶：恰好产出 1 个主表 OrderPO
+            assertThat(result.toSave()).hasSize(1);
+            assertThat(result.getToSave(OrderPO.class)).hasSize(1);
+            assertThat(result.getToSave(OrderItemPO.class)).isEmpty();
+            assertThat(result.toDelete()).isEmpty();
         }
     }
 
