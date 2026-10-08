@@ -32,7 +32,7 @@ import com.nona.annotation.ScaffoldGenerated;
  * <p>
  * 定位一律经 {@link ChangeLocation} 语义工厂构造（{@code field}/{@code collectionItem}），
  * 不再手工拼装路径字符串；手工构造的 {@link DispatchedChanges} 即本层合法的 mock 输入——
- * 真实「追踪器 → 分派器 → 重建器」链路（含 AC03 的主表修改、成员增删改、整体赋值与清空）
+ * 真实「追踪器 → 分派器 → 重建器」链路（含主表修改、成员增删改、整体赋值与清空）
  * 由 {@code FullIntegrationUnitTest} 的真实链路用例覆盖，二者互补而不重复。
  * <p>
  * 用例分类：Happy（主表 / 子表增删改 / 混合）、Critical（空变更 / 缺转换器 / 缺子对象 /
