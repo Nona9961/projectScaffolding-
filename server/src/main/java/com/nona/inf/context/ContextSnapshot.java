@@ -1,7 +1,7 @@
 package com.nona.inf.context;
 
 import com.nona.annotation.ScaffoldGenerated;
-import com.nona.changeTracking.domain.model.tracking.BaselineSnapshot;
+import com.nona.changeTracking.tracking.BaselineSnapshot;
 import jakarta.annotation.Nullable;
 
 import java.util.List;

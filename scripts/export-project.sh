@@ -146,7 +146,7 @@ rmdir "$OUT/api/src/main/java/com"     "$OUT/common/src/main/java/com" \
 # ---- 3. Token 替换（长 token 优先，大小写敏感，全文件替换） ----
 # com.nona 同时是外部依赖 changeTracking 的两层引用面：
 #  1) Maven 坐标层（dependencyManagement / server 依赖中的 com.nona:change-tracking-api）
-#  2) Java 包名层（服务器源码 19 处 import com.nona.changeTracking.domain.model.tracking.* 等）
+#  2) Java 包名层（服务器源码 import com.nona.changeTracking.tracking.* 等）
 # 两者都必须保持原样；其余 com.nona 全部替换为 <pkg>。
 # 实现：统一双负向预查（对全部复制文件生效）——com.nona 后紧邻 .changeTracking
 # （框架 Java 包）或 </groupId>+<artifactId>change-tracking-（外部 Maven 坐标）时不替换。

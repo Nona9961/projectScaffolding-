@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.nona.annotation.ScaffoldGenerated;
-import com.nona.changeTracking.domain.model.tracking.ChangeTracker;
+import com.nona.changeTracking.tracking.ChangeTracker;
 import com.nona.inf.persistence.tracking.ChangeTrackerProvider;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;

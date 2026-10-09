@@ -1,8 +1,8 @@
 package com.nona.inf.persistence.repository;
 
 import com.nona.annotation.ScaffoldGenerated;
-import com.nona.changeTracking.domain.model.changeset.ChangeSet;
-import com.nona.changeTracking.domain.model.tracking.ChangeTracker;
+import com.nona.changeTracking.change.ChangeSet;
+import com.nona.changeTracking.tracking.ChangeTracker;
 import com.nona.inf.context.ExecutionContext;
 import com.nona.inf.persistence.converters.RdbGeneralConvertor;
 import com.nona.inf.persistence.po.BasePO;

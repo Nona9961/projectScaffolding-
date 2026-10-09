@@ -1,10 +1,10 @@
 package com.nona.inf.persistence.reconstructor;
 
-import com.nona.changeTracking.domain.model.changeset.Change;
-import com.nona.changeTracking.domain.model.changeset.ChangeSet;
-import com.nona.changeTracking.domain.model.changeset.ItemAddedChange;
-import com.nona.changeTracking.domain.model.changeset.ItemRemovedChange;
-import com.nona.changeTracking.domain.model.snapshot.ObjectNode;
+import com.nona.changeTracking.change.Change;
+import com.nona.changeTracking.change.ChangeSet;
+import com.nona.changeTracking.change.ItemAddedChange;
+import com.nona.changeTracking.change.ItemRemovedChange;
+import com.nona.changeTracking.snapshot.ObjectNode;
 import com.nona.inf.persistence.converters.CompositePoConverter;
 import com.nona.inf.persistence.converters.ConverterRegistry;
 import com.nona.inf.persistence.converters.PoConverter;

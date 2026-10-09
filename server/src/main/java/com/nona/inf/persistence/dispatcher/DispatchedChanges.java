@@ -1,10 +1,10 @@
 package com.nona.inf.persistence.dispatcher;
 
-import com.nona.changeTracking.domain.model.changeset.Change;
-import com.nona.changeTracking.domain.model.changeset.ItemAddedChange;
-import com.nona.changeTracking.domain.model.changeset.ItemRemovedChange;
-import com.nona.changeTracking.domain.model.changeset.ObjectFieldChange;
-import com.nona.changeTracking.domain.model.changeset.ValueChange;
+import com.nona.changeTracking.change.Change;
+import com.nona.changeTracking.change.ItemAddedChange;
+import com.nona.changeTracking.change.ItemRemovedChange;
+import com.nona.changeTracking.change.ObjectFieldChange;
+import com.nona.changeTracking.change.ValueChange;
 import lombok.Getter;
 
 import java.util.ArrayList;

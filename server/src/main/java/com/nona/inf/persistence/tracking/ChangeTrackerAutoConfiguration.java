@@ -1,6 +1,6 @@
 package com.nona.inf.persistence.tracking;
 
-import com.nona.changeTracking.domain.model.tracking.ChangeTracker;
+import com.nona.changeTracking.tracking.ChangeTracker;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;

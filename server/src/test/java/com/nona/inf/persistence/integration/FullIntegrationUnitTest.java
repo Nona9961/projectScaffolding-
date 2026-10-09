@@ -1,8 +1,8 @@
 package com.nona.inf.persistence.integration;
 
-import com.nona.changeTracking.domain.model.changeset.*;
-import com.nona.changeTracking.domain.model.tracking.ChangeTracker;
-import com.nona.changeTracking.internal.capability.DefaultTrackingCapabilityProvider;
+import com.nona.changeTracking.change.*;
+import com.nona.changeTracking.tracking.ChangeTracker;
+import com.nona.changeTracking.tracking.DefaultTrackingCapabilityProvider;
 import com.nona.inf.context.ExecutionContext;
 import com.nona.inf.persistence.converters.CompositePoConverter;
 import com.nona.inf.persistence.converters.ConverterRegistry;
