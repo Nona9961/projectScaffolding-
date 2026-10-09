@@ -1,5 +1,6 @@
 package com.nona.inf.persistence.reconstructor;
 
+import com.nona.changeTracking.domain.model.changeset.ChangeLocation;
 import com.nona.changeTracking.domain.model.changeset.ChangeSet;
 import com.nona.changeTracking.domain.model.changeset.ValueChange;
 import com.nona.changeTracking.domain.model.changeset.ItemAddedChange;
@@ -24,6 +25,18 @@ import com.nona.annotation.ScaffoldGenerated;
 
 /**
  * PoReconstructor 单元测试
+ * <p>
+ * 被测对象为 {@link PoReconstructor} 的隔离映射契约：给定一份「已分派变更」
+ * （{@link DispatchedChanges}，即协作者 {@link ChangeDispatcher} 的输出形状），
+ * 重建器应把其中的定位与载荷翻译为待保存 PO / 待删除信息。
+ * <p>
+ * 定位一律经 {@link ChangeLocation} 语义工厂构造（{@code field}/{@code collectionItem}），
+ * 不再手工拼装路径字符串；手工构造的 {@link DispatchedChanges} 即本层合法的 mock 输入——
+ * 真实「追踪器 → 分派器 → 重建器」链路（含主表修改、成员增删改、整体赋值与清空）
+ * 由 {@code FullIntegrationUnitTest} 的真实链路用例覆盖，二者互补而不重复。
+ * <p>
+ * 用例分类：Happy（主表 / 子表增删改 / 混合）、Critical（空变更 / 缺转换器 / 缺子对象 /
+ * 字符串标识）、边界（主表字段清空为 null）。
  */
 @DisplayName("PoReconstructor 测试")
 @ScaffoldGenerated
@@ -107,6 +120,28 @@ class PoReconstructorUnitTest {
         void setValue(String value) { this.value = value; }
     }
 
+    // ========== 定位构造辅助 ==========
+
+    /** 主表字段定位：{@code status}。 */
+    private static final ChangeLocation STATUS_LOCATION = ChangeLocation.field(ChangeLocation.root(), "status");
+
+    /** 集合字段定位：{@code items}。 */
+    private static final ChangeLocation ITEMS_LOCATION = ChangeLocation.field(ChangeLocation.root(), "items");
+
+    /** 集合字段定位：{@code specs}。 */
+    private static final ChangeLocation SPECS_LOCATION = ChangeLocation.field(ChangeLocation.root(), "specs");
+
+    /**
+     * 构造 {@code items} 集合中某标识项内部的字段定位。
+     *
+     * @param identity 集合项标识
+     * @param field    项内字段名
+     * @return 字段定位
+     */
+    private static ChangeLocation itemFieldLocation(Object identity, String field) {
+        return ChangeLocation.field(ChangeLocation.collectionItem(ITEMS_LOCATION, identity), field);
+    }
+
     // ========== 测试依赖 ==========
 
     private ConverterRegistry converterRegistry;
@@ -118,6 +153,15 @@ class PoReconstructorUnitTest {
         converterRegistry = mock(ConverterRegistry.class);
         changeDispatcher = mock(ChangeDispatcher.class);
         poReconstructor = new PoReconstructor(converterRegistry, changeDispatcher);
+    }
+
+    /**
+     * 一份空变更集：分派结果由 mock 直接给出，变更集本身不参与本层断言。
+     *
+     * @return 空变更集
+     */
+    private static ChangeSet emptyChangeSet() {
+        return new ChangeSet(List.of());
     }
 
     // ========== 测试用例 ==========
@@ -132,9 +176,9 @@ class PoReconstructorUnitTest {
         orderPO.setId(1L);
         orderPO.setStatus("PAID");
 
-        final ChangeSet changeSet = new ChangeSet(List.of());
+        final ChangeSet changeSet = emptyChangeSet();
         final DispatchedChanges dispatched = new DispatchedChanges();
-        dispatched.addMainTableChange(new ValueChange("status", "status", "status", null, false, "PENDING", "PAID"));
+        dispatched.addMainTableChange(new ValueChange(STATUS_LOCATION, "PENDING", "PAID"));
 
         final CompositePoConverter<Order, OrderPO> converter = mock(CompositePoConverter.class);
         when(converter.toMainPO(order)).thenReturn(orderPO);
@@ -148,6 +192,34 @@ class PoReconstructorUnitTest {
         // Then
         assertThat(result.getToSave(OrderPO.class)).hasSize(1);
         assertThat(result.getToSave(OrderPO.class).get(0).getStatus()).isEqualTo("PAID");
+        assertThat(result.toDelete()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("主表字段清空为 null 时仍返回主表 PO（不因载荷为空而跳过）")
+    @SuppressWarnings("unchecked")
+    void shouldReturnMainPoWhenMainFieldClearedToNull() {
+        // Given
+        final Order order = new Order(1L, "PENDING", List.of());
+        final OrderPO orderPO = new OrderPO();
+        orderPO.setId(1L);
+
+        final ChangeSet changeSet = emptyChangeSet();
+        final DispatchedChanges dispatched = new DispatchedChanges();
+        dispatched.addMainTableChange(new ValueChange(STATUS_LOCATION, "PAID", null));
+
+        final CompositePoConverter<Order, OrderPO> converter = mock(CompositePoConverter.class);
+        when(converter.toMainPO(order)).thenReturn(orderPO);
+        when(converterRegistry.getCompositeConverter(Order.class))
+                .thenReturn((java.util.Optional) java.util.Optional.of(converter));
+        when(changeDispatcher.dispatch(changeSet, Order.class)).thenReturn(dispatched);
+
+        // When
+        final ReconstructedPos result = poReconstructor.reconstruct(order, changeSet);
+
+        // Then
+        assertThat(result.getToSave(OrderPO.class)).hasSize(1);
+        verify(converter).toMainPO(order);
     }
 
     @Test
@@ -155,7 +227,7 @@ class PoReconstructorUnitTest {
     void shouldReturnEmptyWhenNoChanges() {
         // Given
         final Order order = new Order(1L, "PENDING", List.of());
-        final ChangeSet changeSet = new ChangeSet(List.of());
+        final ChangeSet changeSet = emptyChangeSet();
         final DispatchedChanges dispatched = new DispatchedChanges();
 
         when(changeDispatcher.dispatch(changeSet, Order.class)).thenReturn(dispatched);
@@ -179,15 +251,15 @@ class PoReconstructorUnitTest {
         itemPO.setId(100L);
         itemPO.setName("iPhone");
 
-        final ChangeSet changeSet = new ChangeSet(List.of());
+        final ChangeSet changeSet = emptyChangeSet();
         final DispatchedChanges dispatched = new DispatchedChanges();
 
         final ObjectNode addedNode = new ObjectNode(java.util.Map.of(), 100L);
-        dispatched.getOrCreateCollectionChanges("items").addAddition(new ItemAddedChange("[100]", "items[100]", null, "items", true, addedNode));
+        dispatched.getOrCreateCollectionChanges("items")
+                .addAddition(new ItemAddedChange(ChangeLocation.collectionItem(ITEMS_LOCATION, 100L), addedNode));
 
         final PoConverter<OrderItem, OrderItemPO> itemConverter = mock(PoConverter.class);
         when(itemConverter.toPO(item)).thenReturn(itemPO);
-        when(itemConverter.poClass()).thenReturn(OrderItemPO.class);
         when(converterRegistry.getAllConverters()).thenReturn(Map.of("items", itemConverter));
         when(changeDispatcher.dispatch(changeSet, Order.class)).thenReturn(dispatched);
 
@@ -200,15 +272,16 @@ class PoReconstructorUnitTest {
     }
 
     @Test
-    @DisplayName("子表删除时应该返回删除的 ID")
-    void shouldReturnDeletedIds() {
+    @DisplayName("子表删除时应该返回删除类型与 ID")
+    void shouldReturnDeletionTypeAndId() {
         // Given
         final Order order = new Order(1L, "PENDING", List.of());
-        final ChangeSet changeSet = new ChangeSet(List.of());
+        final ChangeSet changeSet = emptyChangeSet();
         final DispatchedChanges dispatched = new DispatchedChanges();
 
         final ObjectNode removedNode = new ObjectNode(java.util.Map.of(), 200L);
-        dispatched.getOrCreateCollectionChanges("items").addRemoval(new ItemRemovedChange("[200]", "items[200]", null, "items", true, removedNode));
+        dispatched.getOrCreateCollectionChanges("items")
+                .addRemoval(new ItemRemovedChange(ChangeLocation.collectionItem(ITEMS_LOCATION, 200L), removedNode));
 
         final PoConverter<OrderItem, OrderItemPO> itemConverter = mock(PoConverter.class);
         when(itemConverter.poClass()).thenReturn(OrderItemPO.class);
@@ -219,12 +292,13 @@ class PoReconstructorUnitTest {
         final ReconstructedPos result = poReconstructor.reconstruct(order, changeSet);
 
         // Then
-        assertThat(result.getToDeleteIds(OrderItemPO.class)).hasSize(1);
-        assertThat(result.getToDeleteIds(OrderItemPO.class).get(0)).isEqualTo(200L);
+        assertThat(result.toDelete()).hasSize(1);
+        assertThat(result.toDelete().get(0).poClass()).isEqualTo(OrderItemPO.class);
+        assertThat(result.getToDeleteIds(OrderItemPO.class)).containsExactly(200L);
     }
 
     @Test
-    @DisplayName("子表字段变更时应该返回更新的子 PO")
+    @DisplayName("子表字段变更时应该返回更新的子 PO（载荷取自 root 中的当前对象）")
     void shouldReturnUpdatedChildPo() {
         // Given
         final OrderItem item = new OrderItem(100L, "iPhone Pro");
@@ -234,13 +308,13 @@ class PoReconstructorUnitTest {
         itemPO.setId(100L);
         itemPO.setName("iPhone Pro");
 
-        final ChangeSet changeSet = new ChangeSet(List.of());
+        final ChangeSet changeSet = emptyChangeSet();
         final DispatchedChanges dispatched = new DispatchedChanges();
-        dispatched.getOrCreateCollectionChanges("items").addFieldChange(new ValueChange("name", "items[100].name", "name", "items", true, "iPhone", "iPhone Pro"));
+        dispatched.getOrCreateCollectionChanges("items")
+                .addFieldChange(new ValueChange(itemFieldLocation(100L, "name"), "iPhone", "iPhone Pro"));
 
         final PoConverter<OrderItem, OrderItemPO> itemConverter = mock(PoConverter.class);
         when(itemConverter.toPO(item)).thenReturn(itemPO);
-        when(itemConverter.poClass()).thenReturn(OrderItemPO.class);
         when(converterRegistry.getAllConverters()).thenReturn(Map.of("items", itemConverter));
         when(changeDispatcher.dispatch(changeSet, Order.class)).thenReturn(dispatched);
 
@@ -250,6 +324,7 @@ class PoReconstructorUnitTest {
         // Then
         assertThat(result.getToSave(OrderItemPO.class)).hasSize(1);
         assertThat(result.getToSave(OrderItemPO.class).get(0).getName()).isEqualTo("iPhone Pro");
+        assertThat(result.toDelete()).isEmpty();
     }
 
     @Test
@@ -268,13 +343,14 @@ class PoReconstructorUnitTest {
         itemPO.setId(100L);
         itemPO.setName("iPhone");
 
-        final ChangeSet changeSet = new ChangeSet(List.of());
+        final ChangeSet changeSet = emptyChangeSet();
         final DispatchedChanges dispatched = new DispatchedChanges();
         // 主表变更
-        dispatched.addMainTableChange(new ValueChange("status", "status", "status", null, false, "PENDING", "PAID"));
+        dispatched.addMainTableChange(new ValueChange(STATUS_LOCATION, "PENDING", "PAID"));
         // 子表新增
         final ObjectNode addedNode = new ObjectNode(java.util.Map.of(), 100L);
-        dispatched.getOrCreateCollectionChanges("items").addAddition(new ItemAddedChange("[100]", "items[100]", null, "items", true, addedNode));
+        dispatched.getOrCreateCollectionChanges("items")
+                .addAddition(new ItemAddedChange(ChangeLocation.collectionItem(ITEMS_LOCATION, 100L), addedNode));
 
         final CompositePoConverter<Order, OrderPO> mainConverter = mock(CompositePoConverter.class);
         when(mainConverter.toMainPO(order)).thenReturn(orderPO);
@@ -283,7 +359,6 @@ class PoReconstructorUnitTest {
 
         final PoConverter<OrderItem, OrderItemPO> itemConverter = mock(PoConverter.class);
         when(itemConverter.toPO(item)).thenReturn(itemPO);
-        when(itemConverter.poClass()).thenReturn(OrderItemPO.class);
         when(converterRegistry.getAllConverters()).thenReturn(Map.of("items", itemConverter));
         when(changeDispatcher.dispatch(changeSet, Order.class)).thenReturn(dispatched);
 
@@ -313,19 +388,22 @@ class PoReconstructorUnitTest {
         itemPO2.setId(200L);
         itemPO2.setName("iPad");
 
-        final ChangeSet changeSet = new ChangeSet(List.of());
+        final ChangeSet changeSet = emptyChangeSet();
         final DispatchedChanges dispatched = new DispatchedChanges();
 
-        // 新增 item1
+        // 新增 item1（标识 100）
         final ObjectNode addedNode1 = new ObjectNode(java.util.Map.of(), 100L);
-        dispatched.getOrCreateCollectionChanges("items").addAddition(new ItemAddedChange("[100]", "items[100]", null, "items", true, addedNode1));
+        dispatched.getOrCreateCollectionChanges("items")
+                .addAddition(new ItemAddedChange(ChangeLocation.collectionItem(ITEMS_LOCATION, 100L), addedNode1));
 
-        // 删除 item (id=300)
+        // 删除 item（标识 300）
         final ObjectNode removedNode = new ObjectNode(java.util.Map.of(), 300L);
-        dispatched.getOrCreateCollectionChanges("items").addRemoval(new ItemRemovedChange("[200]", "items[200]", null, "items", true, removedNode));
+        dispatched.getOrCreateCollectionChanges("items")
+                .addRemoval(new ItemRemovedChange(ChangeLocation.collectionItem(ITEMS_LOCATION, 300L), removedNode));
 
-        // 更新 item2
-        dispatched.getOrCreateCollectionChanges("items").addFieldChange(new ValueChange("name", "items[200].name", "name", "items", true, "iPad Mini", "iPad"));
+        // 更新 item2（标识 200）
+        dispatched.getOrCreateCollectionChanges("items")
+                .addFieldChange(new ValueChange(itemFieldLocation(200L, "name"), "iPad Mini", "iPad"));
 
         final PoConverter<OrderItem, OrderItemPO> itemConverter = mock(PoConverter.class);
         when(itemConverter.toPO(item1)).thenReturn(itemPO1);
@@ -340,9 +418,10 @@ class PoReconstructorUnitTest {
         // Then
         // 新增 + 更新 = 2 个 toSave
         assertThat(result.getToSave(OrderItemPO.class)).hasSize(2);
-        // 删除 = 1 个 toDelete
-        assertThat(result.getToDeleteIds(OrderItemPO.class)).hasSize(1);
-        assertThat(result.getToDeleteIds(OrderItemPO.class).get(0)).isEqualTo(300L);
+        // 删除 = 1 个 toDelete，类型与标识均正确
+        assertThat(result.toDelete()).hasSize(1);
+        assertThat(result.toDelete().get(0).poClass()).isEqualTo(OrderItemPO.class);
+        assertThat(result.getToDeleteIds(OrderItemPO.class)).containsExactly(300L);
     }
 
     @Test
@@ -350,9 +429,9 @@ class PoReconstructorUnitTest {
     void shouldIgnoreMainTableChangesWhenNoCompositeConverter() {
         // Given
         final Order order = new Order(1L, "PAID", List.of());
-        final ChangeSet changeSet = new ChangeSet(List.of());
+        final ChangeSet changeSet = emptyChangeSet();
         final DispatchedChanges dispatched = new DispatchedChanges();
-        dispatched.addMainTableChange(new ValueChange("status", "status", "status", null, false, "PENDING", "PAID"));
+        dispatched.addMainTableChange(new ValueChange(STATUS_LOCATION, "PENDING", "PAID"));
 
         // 没有注册 CompositeConverter
         when(converterRegistry.getCompositeConverter(Order.class)).thenReturn(java.util.Optional.empty());
@@ -373,11 +452,12 @@ class PoReconstructorUnitTest {
         // Given
         final OrderItem item = new OrderItem(100L, "iPhone");
         final Order order = new Order(1L, "PENDING", List.of(item));
-        final ChangeSet changeSet = new ChangeSet(List.of());
+        final ChangeSet changeSet = emptyChangeSet();
         final DispatchedChanges dispatched = new DispatchedChanges();
 
         final ObjectNode addedNode = new ObjectNode(java.util.Map.of(), 100L);
-        dispatched.getOrCreateCollectionChanges("items").addAddition(new ItemAddedChange("[100]", "items[100]", null, "items", true, addedNode));
+        dispatched.getOrCreateCollectionChanges("items")
+                .addAddition(new ItemAddedChange(ChangeLocation.collectionItem(ITEMS_LOCATION, 100L), addedNode));
 
         // 没有注册 items 的 converter
         when(converterRegistry.getAllConverters()).thenReturn(Map.of());
@@ -396,15 +476,15 @@ class PoReconstructorUnitTest {
     void shouldSkipWhenChildObjectNotFound() {
         // Given
         final Order order = new Order(1L, "PENDING", List.of()); // 空的 items 列表
-        final ChangeSet changeSet = new ChangeSet(List.of());
+        final ChangeSet changeSet = emptyChangeSet();
         final DispatchedChanges dispatched = new DispatchedChanges();
 
-        // 新增一个不存在于 root 中的 item
-        final ObjectNode addedNode = new ObjectNode(java.util.Map.of(), 999L); // 这个 ID 在 order.items 中不存在
-        dispatched.getOrCreateCollectionChanges("items").addAddition(new ItemAddedChange("[100]", "items[100]", null, "items", true, addedNode));
+        // 新增一个不存在于 root 中的 item（标识 999）
+        final ObjectNode addedNode = new ObjectNode(java.util.Map.of(), 999L);
+        dispatched.getOrCreateCollectionChanges("items")
+                .addAddition(new ItemAddedChange(ChangeLocation.collectionItem(ITEMS_LOCATION, 999L), addedNode));
 
         final PoConverter<OrderItem, OrderItemPO> itemConverter = mock(PoConverter.class);
-        when(itemConverter.poClass()).thenReturn(OrderItemPO.class);
         when(converterRegistry.getAllConverters()).thenReturn(Map.of("items", itemConverter));
         when(changeDispatcher.dispatch(changeSet, Order.class)).thenReturn(dispatched);
 
@@ -427,14 +507,16 @@ class PoReconstructorUnitTest {
         specPO.setKey("color");
         specPO.setValue("red");
 
-        final ChangeSet changeSet = new ChangeSet(List.of());
+        final ChangeSet changeSet = emptyChangeSet();
         final DispatchedChanges dispatched = new DispatchedChanges();
         // String identifier: specs[color].value
-        dispatched.getOrCreateCollectionChanges("specs").addFieldChange(new ValueChange("value", "specs[color].value", "value", "specs", true, "blue", "red"));
+        dispatched.getOrCreateCollectionChanges("specs")
+                .addFieldChange(new ValueChange(
+                        ChangeLocation.field(ChangeLocation.collectionItem(SPECS_LOCATION, "color"), "value"),
+                        "blue", "red"));
 
         final PoConverter<Spec, SpecPO> specConverter = mock(PoConverter.class);
         when(specConverter.toPO(spec)).thenReturn(specPO);
-        when(specConverter.poClass()).thenReturn(SpecPO.class);
         when(converterRegistry.getAllConverters()).thenReturn(Map.of("specs", specConverter));
         when(changeDispatcher.dispatch(changeSet, Order.class)).thenReturn(dispatched);
 
