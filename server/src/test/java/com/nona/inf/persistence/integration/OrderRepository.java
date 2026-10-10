@@ -1,9 +1,9 @@
 package com.nona.inf.persistence.integration;
 
 import com.nona.annotation.ScaffoldGenerated;
-import com.nona.changeTracking.domain.model.changeset.*;
-import com.nona.changeTracking.domain.model.snapshot.NullNode;
-import com.nona.changeTracking.domain.model.snapshot.ObjectNode;
+import com.nona.changeTracking.change.*;
+import com.nona.changeTracking.snapshot.NullNode;
+import com.nona.changeTracking.snapshot.ObjectNode;
 import com.nona.inf.persistence.converters.ConverterRegistry;
 import com.nona.inf.persistence.converters.PoConverter;
 import com.nona.inf.persistence.converters.RdbGeneralConvertor;

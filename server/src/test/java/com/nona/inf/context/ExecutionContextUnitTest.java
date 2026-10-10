@@ -1,7 +1,7 @@
 package com.nona.inf.context;
 
 import com.nona.annotation.ScaffoldGenerated;
-import com.nona.changeTracking.domain.model.tracking.ChangeTracker;
+import com.nona.changeTracking.tracking.ChangeTracker;
 import com.nona.inf.persistence.tracking.ChangeTrackerProvider;
 import org.junit.jupiter.api.Test;
 

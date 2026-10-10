@@ -5,10 +5,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.nona.ProjectApplication;
 import com.nona.annotation.ScaffoldGenerated;
-import com.nona.changeTracking.domain.model.changeset.ChangeSet;
-import com.nona.changeTracking.domain.model.changeset.ValueChange;
-import com.nona.changeTracking.domain.model.tracking.BaselineSnapshot;
-import com.nona.changeTracking.domain.model.tracking.ChangeTracker;
+import com.nona.changeTracking.change.ChangeSet;
+import com.nona.changeTracking.change.ValueChange;
+import com.nona.changeTracking.tracking.BaselineSnapshot;
+import com.nona.changeTracking.tracking.ChangeTracker;
 import com.nona.inf.context.ContextSnapshot;
 import com.nona.inf.persistence.tracking.ChangeTrackerProvider;
 import org.junit.jupiter.api.Test;

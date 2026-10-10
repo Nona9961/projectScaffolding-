@@ -1,9 +1,9 @@
 package com.nona.inf.persistence.tracking;
 
 import com.nona.annotation.ScaffoldGenerated;
-import com.nona.changeTracking.domain.capability.TrackingCapability;
-import com.nona.changeTracking.domain.model.tracking.ChangeTracker;
-import com.nona.changeTracking.spi.TrackingCapabilityProvider;
+import com.nona.changeTracking.tracking.TrackingCapability;
+import com.nona.changeTracking.tracking.ChangeTracker;
+import com.nona.changeTracking.tracking.TrackingCapabilityProvider;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collections;

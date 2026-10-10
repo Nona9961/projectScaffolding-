@@ -1,6 +1,6 @@
 package com.nona.inf.persistence.dispatcher;
 
-import com.nona.changeTracking.domain.model.changeset.*;
+import com.nona.changeTracking.change.*;
 import com.nona.inf.persistence.converters.ConverterRegistry;
 import com.nona.inf.persistence.converters.PoConverter;
 import lombok.RequiredArgsConstructor;
