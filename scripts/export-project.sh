@@ -152,8 +152,6 @@ rmdir "$OUT/api/src/main/java/com"     "$OUT/common/src/main/java/com" \
 # （框架 Java 包）或 </groupId>+<artifactId>change-tracking-（外部 Maven 坐标）时不替换。
 # 其余 token 顺序：长 token（DomainRootFactory / DomainRootRepository /
 # configureSomeStatus）必须先于其子串（DomainRoot / someStatus）替换。
-# 附带：surefire argLine 中硬编码的本机 m2 绝对路径（javaagent）转为 ${user.home}
-# 相对形式——新项目构建环境与本机不同，可移植且避免本机路径泄漏。
 export PKG="$pkg" ROOT_LOWER="$root" ROOT_UPPER="$ROOT_ALL" ROOT_CAP="$Root"
 
 replace_tokens() {
@@ -161,7 +159,6 @@ replace_tokens() {
   perl -0pi -e '
     s/com\.nona\.domain\.rootPackage/$ENV{PKG}.domain.$ENV{ROOT_LOWER}/g;
     s/com\.nona(?!\.changeTracking)(?!<\/groupId>\s*<artifactId>change-tracking-)/$ENV{PKG}/g;
-    s#-javaagent:/opt/code/.m2/repository/#-javaagent:\${user.home}/.m2/repository/#g;
     s/DomainRootFactory/${ENV{ROOT_CAP}}Factory/g;
     s/DomainRootRepository/${ENV{ROOT_CAP}}Repository/g;
     s/configureSomeStatus/configure${ENV{ROOT_CAP}}Status/g;
@@ -232,10 +229,10 @@ if [ -n "$residue" ] || [ -n "$pom_residue" ]; then
   [ -n "$pom_residue" ] && echo "$pom_residue" >&2
 fi
 
-# 本机绝对路径不得泄漏（javaagent 均应已替换为 ${user.home} 相对形式）
-leaked="$(grep -rlI -- '-javaagent:/opt/code/' "$OUT" 2>/dev/null || true)"
+# javaagent 不得为硬编码绝对路径（应为属性占位，如 @{...}）
+leaked="$(grep -rlIE -- '-javaagent:/[^$]' "$OUT" 2>/dev/null || true)"
 if [ -n "$leaked" ]; then
-  err_msg "导出内容含本机 javaagent 绝对路径: $leaked"
+  err_msg "导出内容含硬编码 javaagent 绝对路径: $leaked"
 fi
 
 # 被排除项不得出现
